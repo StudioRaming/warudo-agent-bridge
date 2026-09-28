@@ -12,7 +12,7 @@
     "bin/",
     "src/",
     "runtime/*.cs",
-    "docs/",
+    "docs/*.md",
     "config.example.json",
     "README.md",
     "README.ko.md",
