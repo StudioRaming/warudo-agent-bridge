@@ -1,0 +1,57 @@
+{
+  "name": "@studioraming/warudo-agent-bridge",
+  "version": "0.2.0",
+  "description": "MCP server and CLI that let AI agents (Claude, Codex and other MCP clients) inspect and control a running WARUDO: scene, assets, camera, character pose and IK, expressions, blueprints and captures.",
+  "license": "MIT",
+  "author": "StudioRaming",
+  "type": "module",
+  "bin": {
+    "warudo-agent-bridge": "bin/warudo-agent-bridge.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "runtime/*.cs",
+    "docs/",
+    "config.example.json",
+    "README.md",
+    "README.ko.md",
+    "README.ja.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "win32"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check:runtime": "node scripts/compile-runtime.mjs",
+    "docs:tools": "node scripts/gen-tools-doc.mjs",
+    "docs:check": "node scripts/gen-tools-doc.mjs --check"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StudioRaming/warudo-agent-bridge.git"
+  },
+  "homepage": "https://github.com/StudioRaming/warudo-agent-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/StudioRaming/warudo-agent-bridge/issues"
+  },
+  "keywords": [
+    "warudo",
+    "mcp",
+    "model-context-protocol",
+    "vtuber",
+    "claude",
+    "codex",
+    "ai-agent",
+    "unity"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

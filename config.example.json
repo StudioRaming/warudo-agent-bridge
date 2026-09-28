@@ -1,0 +1,14 @@
+{
+  "componentCall": {
+    "allow": []
+  },
+  "retention": {
+    "responsesHours": 1,
+    "evidenceDays": 3,
+    "evidenceMaxFiles": 200,
+    "snapshotsDays": 14,
+    "snapshotsKeep": 30,
+    "posePreviewHours": 24,
+    "commandLogMaxMB": 5
+  }
+}

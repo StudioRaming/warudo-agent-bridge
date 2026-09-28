@@ -1,0 +1,144 @@
+// Tool catalog shared by the MCP server, the CLI and the docs generator.
+// kind: read        never changes WARUDO state (no lease)
+//       write       changes live WARUDO state (lease required)
+//       set         write that sets absolute values; repeating it is harmless
+//       destructive write that removes or replaces user state
+//       free        writes only bridge-owned files, never scene state (no lease)
+// local: implemented in Node on top of other operations.
+
+const object = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
+const vector3 = { type: 'array', minItems: 3, maxItems: 3, items: { type: 'number' } };
+const uuid = (description) => ({ type: 'string', description });
+const assetId = { assetId: uuid('Asset UUID from warudo_asset_list or warudo_scene_get.') };
+const characterId = { assetId: uuid('Character asset UUID. Optional when the scene has one character or a character is selected.') };
+const nodeRef = {
+  graphId: uuid('Blueprint UUID from warudo_blueprint_list.'),
+  nodeId: uuid('Node UUID from warudo_blueprint_get.'),
+};
+const paging = (max) => ({ offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: max } });
+const objectRef = {
+  objectId: { type: 'integer', description: 'Unity object id from warudo_hierarchy_list.' },
+  componentId: { type: 'integer', description: 'Component id from warudo_object_get.' },
+  type: { type: 'string', description: 'Exact component type name, used when componentId is omitted.' },
+};
+const fieldValues = { type: 'object', minProperties: 1, maxProperties: 40, description: 'Field name (dotted path for nested data, e.g. "LeftHandIK.Enabled") to new value.' };
+const fieldNames = { type: 'array', maxItems: 80, items: { type: 'string' }, description: 'Field names or dotted paths to read with current values.' };
+const RESOURCE_TYPES = ['Character', 'CharacterAnimation', 'CharacterHandPose', 'Environment', 'Prop', 'Image', 'Video', 'Music', 'Sound', 'Particle', 'LUT', 'LensDirt'];
+const IK_CHAINS = ['Spine', 'LeftHand', 'RightHand', 'LeftFoot', 'RightFoot'];
+
+const DEFINITIONS = [
+  'Session and lease',
+  ['warudo_status', 'Bridge status', 'Read the live bridge heartbeat: WARUDO pid, sessionId, open scene, frame, lease owner, and runtime version. Call this first.', 'status', 'read', object()],
+  ['warudo_lease_status', 'Lease status', 'Read the current write lease without changing it.', 'lease.status', 'read', object()],
+  ['warudo_lease_acquire', 'Acquire lease', 'Acquire or extend the write lease for this client. The MCP server does this automatically before a write when the lease is free.', 'lease.acquire', 'lease', object({ seconds: { type: 'number', minimum: 5, maximum: 600, default: 120 } })],
+  ['warudo_lease_release', 'Release lease', 'Release this client\'s write lease so another agent can write.', 'lease.release', 'lease', object()],
+
+  'Scene',
+  ['warudo_scene_list', 'List scenes', 'List saved WARUDO scenes.', 'scene.list', 'read', object()],
+  ['warudo_scene_get', 'Open scene', 'Read the open scene name, selected asset and asset summaries.', 'scene.get', 'read', object()],
+  ['warudo_scene_snapshot', 'Snapshot scene', 'Save a local recovery snapshot of the open scene. The snapshot body stays on disk; only its id is returned.', 'scene.snapshot', 'free', object()],
+  ['warudo_scene_snapshots', 'List snapshots', 'List local recovery snapshots (newest first) with reason, scene and time.', 'scene.snapshots', 'read', object({ limit: { type: 'integer', minimum: 1, maximum: 200, default: 30 } })],
+  ['warudo_scene_open', 'Open scene', 'Open a saved scene. A recovery snapshot of the current scene is taken first.', 'scene.open', 'destructive', object({ name: { type: 'string' } }, ['name'])],
+  ['warudo_scene_restore', 'Restore snapshot', 'Restore a local recovery snapshot. The current scene is snapshotted first.', 'scene.restore', 'destructive', object({ snapshotId: { type: 'string' } }, ['snapshotId'])],
+  ['warudo_scene_save_as', 'Save scene as', 'Save the open scene under a name. Overwriting an existing scene needs allowOverwrite=true and keeps a copy of the old file.', 'scene.save_as', 'destructive', object({ name: { type: 'string' }, allowOverwrite: { type: 'boolean', default: false } }, ['name'])],
+
+  'Assets',
+  ['warudo_asset_list', 'List assets', 'List scene assets, optionally filtered by name or type substring.', 'asset.list', 'read', object({ query: { type: 'string' } })],
+  ['warudo_asset_types', 'Asset types', 'List the registered asset types (typeId, title, category) that warudo_asset_add accepts.', 'asset.types', 'read', object()],
+  ['warudo_asset_get', 'Get asset', 'Read one asset summary: type, active, enabled, source, transform, GameObject id.', 'asset.get', 'read', object(assetId, ['assetId'])],
+  ['warudo_asset_fields', 'Asset fields', 'Discover an asset\'s inspector fields (types, labels, enum choices) and triggers. Pass fields to read current values. Use path to browse nested data such as "LeftHandIK".', 'asset.fields', 'read', object({ ...assetId, fields: fieldNames, path: { type: 'string', description: 'Nested structured data path to list, e.g. "LeftHandIK" or "Expressions[0]".' }, query: { type: 'string' }, ...paging(80) }, ['assetId'])],
+  ['warudo_asset_patch', 'Patch asset fields', 'Set inspector fields on an asset (primitives, enums, vectors, colors, strings, asset references), including nested paths like "LeftHandIK.PositionWeight". All values are validated first and rolled back on failure.', 'asset.patch', 'set', object({ ...assetId, fields: fieldValues }, ['assetId', 'fields'])],
+  ['warudo_asset_add', 'Add asset', 'Add an asset of a user-creatable type (see warudo_asset_types). Characters, environments and props may pass a source URI.', 'asset.add', 'write', object({ typeId: { type: 'string' }, name: { type: 'string' }, group: { type: 'string' }, source: { type: 'string' } }, ['typeId'])],
+  ['warudo_asset_delete', 'Delete asset', 'Delete one asset. Pass observedAssetId equal to assetId and the before readback from warudo_asset_get; a recovery snapshot is returned.', 'asset.delete', 'destructive', object({ assetId: { type: 'string' }, observedAssetId: { type: 'string' }, before: { type: 'object' } }, ['assetId', 'observedAssetId', 'before'])],
+  ['warudo_asset_select', 'Select asset', 'Select an asset in the WARUDO editor.', 'asset.select', 'set', object(assetId, ['assetId'])],
+  ['warudo_asset_transform', 'Move asset', 'Set an asset position, rotation (euler degrees) and/or scale in world or local space. All values are validated before any is applied.', 'asset.transform', 'set', object({ ...assetId, space: { type: 'string', enum: ['world', 'local'], default: 'world' }, position: vector3, rotation: vector3, scale: vector3 }, ['assetId'])],
+  ['warudo_asset_enabled', 'Enable asset', 'Enable or disable an asset.', 'asset.enabled', 'set', object({ ...assetId, enabled: { type: 'boolean' } }, ['assetId', 'enabled'])],
+  ['warudo_asset_source', 'Load source', 'Load a character, environment or prop from a source URI listed by warudo_resource_list. Loading is asynchronous: follow with warudo_asset_wait_loaded.', 'asset.source', 'write', object({ ...assetId, source: { type: 'string' } }, ['assetId', 'source'])],
+  ['warudo_asset_wait_loaded', 'Wait for load', 'Poll an asset until it is active with a loaded GameObject (and, if given, the expected source), or until the timeout.', 'asset.get', 'read', object({ ...assetId, source: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 500, maximum: 120000, default: 30000 } }, ['assetId']), { local: 'waitLoaded' }],
+  ['warudo_trigger_invoke', 'Press trigger button', 'Press an inspector trigger button on an asset (assetId) or a blueprint node (graphId + nodeId). List trigger keys with warudo_asset_fields or warudo_node_fields.', 'entity.trigger', 'destructive', object({ ...assetId, ...nodeRef, trigger: { type: 'string' } }, ['trigger'])],
+  ['warudo_resource_list', 'List resources', 'List installed resources WARUDO offers for a type, with the URIs that source, idle animation and similar fields accept.', 'resource.list', 'read', object({ type: { type: 'string', enum: RESOURCE_TYPES }, query: { type: 'string' }, ...paging(500) }, ['type'])],
+
+  'Characters',
+  ['warudo_character_expressions', 'Expressions', 'List a character\'s expressions and which are active.', 'character.expressions', 'read', object(characterId)],
+  ['warudo_character_expression', 'Set expression', 'Enter or exit a character expression by name, or exit all. transient=true plays the expression once. Waits (up to 2 s) until the active list shows the change.', 'character.expression', 'write', object({ ...characterId, action: { type: 'string', enum: ['enter', 'exit', 'exitAll'] }, name: { type: 'string' }, transient: { type: 'boolean', default: false } }, ['action'])],
+  ['warudo_character_blendshapes', 'Blendshapes', 'List a character\'s skinned meshes and blendshapes with their current weights (0..1) and any bridge overrides.', 'character.blendshapes', 'read', object({ ...characterId, mesh: { type: 'string' }, query: { type: 'string' }, ...paging(500) })],
+  ['warudo_character_blendshape', 'Override blendshapes', 'Hold blendshape weights (0..1) on top of tracking and expressions until cleared. mesh limits the override to one skinned mesh. clear=true first removes the overrides the bridge holds on this character.', 'character.blendshape', 'set', object({ ...characterId, values: { type: 'object', maxProperties: 64, description: 'Blendshape name to weight 0..1.' }, mesh: { type: 'string' }, clear: { type: 'boolean', default: false } })],
+  ['warudo_character_animation', 'Play animation', 'Set the idle animation (loops, persists in the scene data) or play a one-shot animation. URIs come from warudo_resource_list type=CharacterAnimation.', 'character.animation', 'write', object({ ...characterId, idle: { type: 'string' }, oneShot: { type: 'string' }, weight: { type: 'number', minimum: 0, maximum: 1, default: 1 }, speed: { type: 'number', minimum: 0.05, maximum: 5, default: 1 } })],
+  ['warudo_character_pose_get', 'Read pose', 'Read the character\'s current humanoid pose: all 95 Unity muscles (name, value, degree range), body height/rotation, and optional bone rotations. Use it before posing from a reference image.', 'character.pose.get', 'read', object({ ...characterId, includeBones: { type: 'boolean', default: true }, query: { type: 'string', description: 'Muscle name substring filter, e.g. "Arm" or "Left Hand".' } })],
+  ['warudo_character_pose_set', 'Set pose', 'Pose the character. Aim bones and/or set Unity muscles (-1..1); anything not given keeps the base pose. Every joint is held inside the avatar\'s humanoid range (muscles -1..1), so only poses a person could take are possible; the reply lists joints that hit their limit (limited) so you can ease that aim. The pose is baked into a small .anim and played as the idle animation, so tracking and IK still layer on top. The reply comes once the character shows the pose (shown.matched; shown.furthestMuscle names what another layer still moves, shown.replacedBy an idle that took over), so a capture right after sees it. Capture with warudo_camera_capture, compare with the reference, and adjust.', 'character.pose.set', 'write', object({ ...characterId, base: { type: 'string', enum: ['applied', 'standing', 'current', 'neutral'], default: 'applied', description: 'applied: last pose set by the bridge (else standing). standing: this avatar standing straight (from its rest skeleton), arms at the sides. current: what is on screen now. neutral: all muscles 0, which bends hips and knees. The pose covers the whole body, so aim the legs too unless standing is wanted.' }, muscles: { type: 'object', maxProperties: 95, description: 'Muscle name (see warudo_character_pose_get) or index to value, e.g. {"Left Arm Down-Up": 0.6}.' }, bones: { type: 'object', maxProperties: 55, description: 'HumanBodyBones name to {"aim":[x,y,z]} (point the bone toward its child; x = right, y = up, z = forward of the frame chosen by space) or {"rotate":[x,y,z]} (extra local euler degrees). Example: {"LeftUpperArm":{"aim":[-1,1,0]},"LeftLowerArm":{"aim":[0,1,0]}}. Legs too: UpperLeg, LowerLeg, Foot. Bones are posed parent first down the humanoid hierarchy (hips, spine, chest, then neck/head and arms; hips, then legs), after muscles and body values, so turning the spine or chest with muscles carries the arms and head with it.' }, space: { type: 'string', enum: ['body', 'character'], default: 'body', description: 'body: each aim is read in the frame of the torso part the bone hangs from, as currently posed (hips for spine and legs, chest for arms, neck and head). character: the character\'s root frame, ignoring torso turns.' }, bodyRotation: { ...vector3, description: 'Hips orientation, euler degrees relative to the character (0,0,0 = level, facing forward). Unset keeps the base pose hips. The hips are the root of the hierarchy: spine and chest muscles bend the body above them.' }, hipsHeight: { type: 'number', minimum: 0, maximum: 3, description: 'Hips height above the character\'s floor in meters, e.g. about 0.3 to 0.4 kneeling upright or 0.15 sitting on the heels. Easier than bodyHeight; wins over it. Aims and joint limits never move the hips: they stay where the base, bodyHeight or hipsHeight put them.' }, bodyHeight: { type: 'number', minimum: 0, maximum: 3, description: 'Unity body height in normalized human scale (about 1 when standing). Prefer hipsHeight.' } })],
+  ['warudo_character_pose_clear', 'Clear pose', 'Stop the bridge pose and restore the idle animation the character had before the first warudo_character_pose_set.', 'character.pose.clear', 'write', object(characterId)],
+  ['warudo_character_pose_save', 'Save pose as .anim', 'Save a pose as a Unity humanoid .anim clip. from=applied saves the last bridge pose; from=live captures whatever the character shows now. destination=warudo saves into WARUDO\'s CharacterAnimations folder and returns its URI; destination=path writes to an absolute .anim path (e.g. inside a Unity project).', 'character.pose.save', 'write', object({ ...characterId, name: { type: 'string', description: 'Clip and file name without extension.' }, from: { type: 'string', enum: ['applied', 'live'], default: 'applied' }, destination: { type: 'string', enum: ['warudo', 'path'], default: 'warudo' }, path: { type: 'string', description: 'Absolute .anim file path when destination=path.' }, overwrite: { type: 'boolean', default: false } }, ['name'])],
+  ['warudo_character_ik_get', 'Read IK', 'Read the character\'s IK chains (Spine, hands, feet): enabled, target asset, weights and the bone\'s current world position.', 'character.ik.get', 'read', object(characterId)],
+  ['warudo_character_ik_set', 'Set IK', 'Configure one IK chain. targetPosition (world) creates or moves an anchor named "Agent IK <chain>" and targets it; targetAssetId targets an existing asset. Weights are 0..1.', 'character.ik.set', 'write', object({ ...characterId, chain: { type: 'string', enum: IK_CHAINS }, enabled: { type: 'boolean' }, targetAssetId: { type: 'string', description: 'Asset UUID to follow, or "" to clear the target.' }, targetPosition: vector3, targetRotation: vector3, positionWeight: { type: 'number', minimum: 0, maximum: 1 }, rotationWeight: { type: 'number', minimum: 0, maximum: 1 }, bendGoalAssetId: { type: 'string', description: 'Asset UUID for the elbow/knee bend goal, or "" to clear.' }, bendGoalWeight: { type: 'number', minimum: 0, maximum: 1 } }, ['chain'])],
+
+  'Blueprints',
+  ['warudo_blueprint_list', 'List blueprints', 'List blueprints (graphs) with id, name, enabled and node count.', 'graph.list', 'read', object({ query: { type: 'string' } })],
+  ['warudo_blueprint_get', 'Read blueprint', 'Read a blueprint\'s nodes (type, title, ports, triggers) and, optionally, its data and flow connections.', 'graph.get', 'read', object({ graphId: nodeRef.graphId, includeConnections: { type: 'boolean', default: true } }, ['graphId'])],
+  ['warudo_blueprint_enabled', 'Enable blueprint', 'Enable or disable a blueprint.', 'graph.enabled', 'set', object({ graphId: nodeRef.graphId, enabled: { type: 'boolean' } }, ['graphId', 'enabled'])],
+  ['warudo_node_fields', 'Node fields', 'Discover a node\'s input fields and triggers; pass fields to read current values.', 'node.fields', 'read', object({ ...nodeRef, fields: fieldNames, path: { type: 'string' }, query: { type: 'string' }, ...paging(80) }, ['graphId', 'nodeId'])],
+  ['warudo_node_patch', 'Patch node fields', 'Set a node\'s input fields. Same value rules and rollback as warudo_asset_patch.', 'node.patch', 'set', object({ ...nodeRef, fields: fieldValues }, ['graphId', 'nodeId', 'fields'])],
+  ['warudo_node_flow', 'Run node', 'Invoke a node\'s flow input (for example "Enter") as if a connected flow reached it.', 'node.flow', 'destructive', object({ ...nodeRef, input: { type: 'string', default: 'Enter' } }, ['graphId', 'nodeId'])],
+
+  'Camera and capture',
+  ['warudo_camera_get', 'Read camera', 'Read the main or given camera asset: mode, FOV, orbit, world pose, output size.', 'camera.get', 'read', object(assetId)],
+  ['warudo_camera_pose', 'Place camera', 'Switch the camera to free look and place it at position (world), looking at lookAt or with rotation (euler degrees). Returns once the view has arrived (settled=false if it still moved after 3 s), so a capture right after shows the new view.', 'camera.pose', 'set', object({ ...assetId, position: vector3, rotation: vector3, lookAt: vector3 }, ['position'])],
+  ['warudo_camera_orbit', 'Orbit camera', 'Switch to orbit mode around the focused character: yaw degrees, vertical 0..1, optional offset. Returns once the view has arrived.', 'camera.orbit', 'set', object({ ...assetId, yaw: { type: 'number' }, vertical: { type: 'number', minimum: 0, maximum: 1 }, offset: vector3 })],
+  ['warudo_camera_pan', 'Pan camera', 'Move the camera by a local delta in its current mode.', 'camera.pan', 'write', object({ ...assetId, delta: vector3 }, ['delta'])],
+  ['warudo_camera_zoom', 'Camera FOV', 'Set the camera field of view (10..120 degrees).', 'camera.zoom', 'set', object({ ...assetId, fieldOfView: { type: 'number', minimum: 10, maximum: 120 } }, ['fieldOfView'])],
+  ['warudo_camera_restore', 'Restore camera', 'Restore mode, pose, FOV and orbit values previously read with warudo_camera_get.', 'camera.restore', 'set', object({ ...assetId, mode: { type: 'string' }, position: vector3, rotation: vector3, fieldOfView: { type: 'number', minimum: 10, maximum: 120 }, orbitRotation: { type: 'array', minItems: 2, maxItems: 2, items: { type: 'number' } }, orbitOffset: vector3 }, ['mode', 'position', 'rotation'])],
+  ['warudo_camera_capture', 'Camera capture', 'Render the camera offscreen and return the PNG.', 'camera.capture', 'read', object(assetId)],
+  ['warudo_analysis_capture', 'Analysis render', 'Render the character (or any asset) for inspection instead of for looks: no background, no materials, several viewpoints in one image. clay = flat mannequin colored by body part (left warm, right cool; upper limb dark, lower limb light, hand/foot pale). skeleton = bones and joints by part over a faint silhouette (best for checking a pose). wireframe = visible triangle edges by part. Also draws the floor grid, the character facing (green arrow) and where the face points (magenta), and returns contacts: for each hand and foot, the distance to the nearest other body part among the drawn meshes (negative = sunk inside) and the height above the floor, plus floorClearance: the lowest mesh point of each body part (on the floor, above, or below it) for kneeling, sitting and lying poses. With the camera view it also returns joints: where every humanoid joint lands in the camera frame (0..1), to line a pose up with a reference image numerically. Nothing in WARUDO changes; use this rather than warudo_camera_capture when checking poses, contact with the floor, or mesh shape.', 'analysis.capture', 'read', object({ ...assetId, mode: { type: 'string', enum: ['clay', 'skeleton', 'wireframe'], default: 'clay' }, views: { type: 'array', minItems: 1, maxItems: 6, items: { type: 'string', enum: ['camera', 'front', 'back', 'left', 'right', 'top', 'front-left', 'front-right', 'back-left', 'back-right'] }, description: 'Viewpoints, default camera, front, right, top. All but camera are orthographic and relative to the character (right = the character\'s right side).' }, include: { type: 'array', maxItems: 40, items: { type: 'string' }, description: 'Keep only renderers whose path contains one of these (e.g. just the body mesh to see whether a hand sinks into the chest). The reply lists renderer paths.' }, exclude: { type: 'array', maxItems: 40, items: { type: 'string' }, description: 'Hide renderers whose path contains any of these (e.g. hair that covers the body).' }, bones: { type: 'boolean', description: 'Draw the skeleton on top (default on except wireframe).' }, floor: { type: 'boolean', default: true }, size: { type: 'integer', minimum: 256, maximum: 1024, default: 560, description: 'Pixels per view.' } })],
+  ['warudo_screen_capture', 'Screen capture', 'Capture the final WARUDO frame including screen-space UI and return the PNG.', 'screen.capture', 'read', object({ timeoutMs: { type: 'integer', minimum: 100, maximum: 10000, default: 2000 } })],
+  ['warudo_viewport_pick', 'Pick at viewport point', 'Find the nearest renderer under normalized top-left viewport coordinates (bounds test, not exact triangles) and, by default, select its asset.', 'viewport.pick', 'write', object({ ...assetId, x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, select: { type: 'boolean', default: true } }, ['x', 'y'])],
+
+  'Unity objects',
+  ['warudo_hierarchy_list', 'List objects', 'List loaded Unity GameObjects, filtered by name substring and scene.', 'hierarchy.list', 'read', object({ query: { type: 'string' }, scene: { type: 'string' }, ...paging(500) })],
+  ['warudo_object_get', 'Get object', 'Read one GameObject and its components.', 'object.get', 'read', object({ objectId: objectRef.objectId }, ['objectId'])],
+  ['warudo_object_transform', 'Move object', 'Set a GameObject world position/rotation or local scale. WARUDO may overwrite objects it drives; prefer asset tools for assets.', 'object.transform', 'set', object({ objectId: objectRef.objectId, position: vector3, rotation: vector3, scale: vector3 }, ['objectId'])],
+  ['warudo_object_active', 'Activate object', 'Set a GameObject active or inactive.', 'object.active', 'set', object({ objectId: objectRef.objectId, active: { type: 'boolean' } }, ['objectId', 'active'])],
+  ['warudo_component_get', 'Read component', 'Read public fields and allowlisted Unity properties of a component. Renderer materials are read as shared materials (never instantiated); pass materialProperties to read shader values. Unreadable names are listed in unreadable.', 'component.get', 'read', object({ ...objectRef, fields: { type: 'array', maxItems: 40, items: { type: 'string' } }, materialProperties: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128 } } }, ['objectId'])],
+  ['warudo_component_patch', 'Patch component', 'Set public primitive/enum/vector/color/string fields or allowlisted Transform/Light/Camera/Renderer properties, validated first and rolled back on failure.', 'component.patch', 'set', object({ ...objectRef, fields: { type: 'object', minProperties: 1, maxProperties: 40 } }, ['objectId', 'fields'])],
+  ['warudo_component_call', 'Call component method', 'Call a public method that the user allowed in config.json componentCall.allow. Disabled by default.', 'component.call', 'destructive', object({ ...objectRef, method: { type: 'string' }, arguments: { type: 'array', maxItems: 40, items: {} } }, ['objectId', 'method'])],
+  ['warudo_shader_globals', 'Shader globals', 'Read global shader values (float, vector, texture) by property name.', 'render.globals', 'read', object({ names: { type: 'array', minItems: 1, maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128 } } }, ['names'])],
+
+  'Input, logs, maintenance',
+  ['warudo_input_key', 'Send hotkey event', 'Broadcast a WARUDO keystroke event to blueprints. Only allowed while WARUDO has focus (hostFocused=true confirms the caller checked); never sends an OS key.', 'input.key', 'write', object({ key: { type: 'string' }, ctrl: { type: 'boolean' }, shift: { type: 'boolean' }, alt: { type: 'boolean' }, meta: { type: 'boolean' }, hostFocused: { type: 'boolean' } }, ['key', 'hostFocused'])],
+  ['warudo_runtime_logs', 'Runtime logs', 'Read WARUDO log lines after a sequence cursor. Secrets are redacted.', 'runtime.logs', 'read', object({ after: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 500 } })],
+  ['warudo_maintenance_cleanup', 'Clean bridge files', 'Delete old bridge files (responses, captures, snapshots, unused pose previews) past the retention in config.json. dryRun=true only reports, with the file names it would delete. Pose previews a character or saved scene still uses are never deleted.', 'maintenance.cleanup', 'free', object({ dryRun: { type: 'boolean', default: true } })],
+];
+
+const ANNOTATIONS = {
+  read: { readOnlyHint: true, openWorldHint: false },
+  free: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  lease: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  write: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  set: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  destructive: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+};
+
+// DEFINITIONS lists a group heading (string) before each group's tool rows.
+export const TOOLS = [];
+let group = null;
+for (const row of DEFINITIONS) {
+  if (typeof row === 'string') {
+    group = row;
+    continue;
+  }
+  const [name, title, description, operation, kind, inputSchema, extra = {}] = row;
+  TOOLS.push({
+    name,
+    title,
+    description,
+    operation,
+    kind,
+    group,
+    inputSchema,
+    annotations: { title, ...ANNOTATIONS[kind] },
+    // The runtime refuses these without a live lease held by the same owner.
+    needsLease: kind === 'write' || kind === 'set' || kind === 'destructive',
+    local: extra.local,
+  });
+}
+
+export const TOOL_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
+export { RESOURCE_TYPES, IK_CHAINS };

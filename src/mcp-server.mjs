@@ -1,0 +1,195 @@
+import readline from 'node:readline';
+import process from 'node:process';
+import { request, responseError, readEvidencePng, defaultOwner, BridgeError, BridgeUnknownError } from './transport.mjs';
+import { TOOLS, TOOL_BY_NAME } from './tools.mjs';
+import { VERSION } from './version.mjs';
+
+// Dual-era MCP server over stdio (https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning).
+// Modern clients send the protocol version in every request's _meta; legacy
+// clients open with an initialize handshake.
+export const MODERN_VERSIONS = ['2026-07-28'];
+export const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+const VERSION_META = 'io.modelcontextprotocol/protocolVersion';
+const SERVER_INFO = { name: 'warudo-agent-bridge', title: 'WARUDO Agent Bridge', version: VERSION };
+
+export const INSTRUCTIONS = [
+  'Controls a running WARUDO (VTuber software) on this PC through a local file mailbox.',
+  'Start with warudo_status. Read before you write: asset ids, field names, blueprint and node ids all come from list/get tools.',
+  'Writes need a short lease; this server takes it automatically when no other agent holds it. Release it with warudo_lease_release when you are done.',
+  'Live changes are not saved into the scene file until warudo_scene_save_as. Mutating tools return before/after values so you can restore them.',
+  'An UNKNOWN error means the request may have run: read the state back instead of retrying. NOT_EXECUTED means it never ran and is safe to retry.',
+  'To pose a character from a reference image: warudo_character_pose_get, then warudo_character_pose_set with muscles, capture with warudo_camera_capture, compare, adjust; save with warudo_character_pose_save.',
+].join(' ');
+
+const textContent = (value) => ({ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) });
+const isCapture = (name) => name === 'warudo_camera_capture' || name === 'warudo_screen_capture' || name === 'warudo_analysis_capture';
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const IDEMPOTENT_KINDS = new Set(['read', 'set', 'lease']);
+
+function errorPayload(error) {
+  if (error instanceof BridgeUnknownError) return { code: 'UNKNOWN', message: error.message, retrySafe: false, details: error.details };
+  if (error instanceof BridgeError) {
+    return { code: error.code, message: error.message, retrySafe: error.code === 'NOT_EXECUTED' || error.code === 'BRIDGE_UNAVAILABLE', ...(error.details && !error.details.response ? { details: error.details } : {}) };
+  }
+  return { code: 'INTERNAL', message: error && error.message ? error.message : String(error), retrySafe: false };
+}
+
+export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, autoLease = true } = {}) {
+  const transportOptions = { home, owner, timeoutMs };
+  let legacyVersion = null;
+
+  // idempotent: reads and absolute-value writes may be retried once if a reload interrupts them.
+  async function operation(name, args, idempotent = false) {
+    const response = await request(name, args, { ...transportOptions, idempotent });
+    const failed = responseError(response);
+    if (failed) throw failed;
+    return response.data;
+  }
+
+  // The runtime checks the lease before it runs anything, so a LEASE_REQUIRED
+  // reply proves the first attempt did nothing and one retry is safe.
+  async function callRuntime(tool, args) {
+    try {
+      return await operation(tool.operation, args, IDEMPOTENT_KINDS.has(tool.kind));
+    } catch (error) {
+      if (!(autoLease && tool.needsLease && error instanceof BridgeError && error.code === 'LEASE_REQUIRED')) throw error;
+    }
+    await operation('lease.acquire', { seconds: 120 }, true);
+    return operation(tool.operation, args, IDEMPOTENT_KINDS.has(tool.kind));
+  }
+
+  async function waitLoaded(args) {
+    const timeout = Math.min(Math.max(Number(args.timeoutMs) || 30_000, 500), 120_000);
+    const started = Date.now();
+    let asset = null;
+    while (Date.now() - started < timeout) {
+      asset = await operation('asset.get', { assetId: args.assetId }, true);
+      const loaded = asset && asset.active === true && asset.gameObjectId != null && (!args.source || asset.source === args.source);
+      if (loaded) return { loaded: true, waitedMs: Date.now() - started, asset };
+      await sleep(250);
+    }
+    return { loaded: false, waitedMs: Date.now() - started, asset, hint: 'Still loading, or the source failed. Check warudo_runtime_logs.' };
+  }
+
+  async function callTool(name, args, modern) {
+    const tool = TOOL_BY_NAME.get(name);
+    let data;
+    try {
+      data = tool.local === 'waitLoaded' ? await waitLoaded(args) : await callRuntime(tool, args);
+    } catch (error) {
+      return { isError: true, content: [textContent(errorPayload(error))] };
+    }
+    const content = [textContent(data)];
+    if (isCapture(name) && data && data.path) {
+      try {
+        const image = await readEvidencePng(home, data.path);
+        content.push({ type: 'image', data: image.data.toString('base64'), mimeType: 'image/png' });
+      } catch (error) {
+        return { isError: true, content: [textContent(errorPayload(error))] };
+      }
+    }
+    const result = { content, isError: false };
+    const structured = modern || (legacyVersion && legacyVersion >= '2025-06-18');
+    if (structured && data !== undefined && (modern || (data && typeof data === 'object' && !Array.isArray(data)))) result.structuredContent = data;
+    return result;
+  }
+
+  const listTools = () => TOOLS.map(({ name, title, description, inputSchema, annotations }) => ({ name, title, description, inputSchema, annotations }));
+
+  // Returns a JSON-RPC response object, or null for notifications.
+  async function handle(message) {
+    if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
+      return rpcError(message && message.id, -32600, 'Invalid JSON-RPC request.');
+    }
+    const { id, method } = message;
+    const params = message.params && typeof message.params === 'object' ? message.params : {};
+    if (id === undefined || id === null) return null; // Notifications never get a reply.
+
+    const requested = params._meta && params._meta[VERSION_META];
+    const modern = requested !== undefined;
+    if (modern && !MODERN_VERSIONS.includes(requested)) {
+      return rpcError(id, -32022, 'Unsupported protocol version', { supported: [...MODERN_VERSIONS, ...LEGACY_VERSIONS], requested });
+    }
+    const ok = (result) => ({ jsonrpc: '2.0', id, result: modern ? { resultType: 'complete', ...result } : result });
+
+    switch (method) {
+      case 'initialize': {
+        const asked = params.protocolVersion;
+        legacyVersion = LEGACY_VERSIONS.includes(asked) ? asked : LEGACY_VERSIONS[0];
+        return ok({ protocolVersion: legacyVersion, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: INSTRUCTIONS });
+      }
+      case 'server/discover':
+        return ok({
+          supportedVersions: [...MODERN_VERSIONS, ...LEGACY_VERSIONS],
+          capabilities: { tools: { listChanged: false } },
+          _meta: { 'io.modelcontextprotocol/serverInfo': SERVER_INFO },
+          instructions: INSTRUCTIONS,
+        });
+      case 'ping':
+        return ok({});
+      case 'tools/list':
+        return ok({ tools: listTools() });
+      case 'tools/call': {
+        if (typeof params.name !== 'string') return rpcError(id, -32602, 'tools/call requires params.name.');
+        if (!TOOL_BY_NAME.has(params.name)) return rpcError(id, -32602, `Unknown tool: ${params.name}`);
+        const args = params.arguments && typeof params.arguments === 'object' && !Array.isArray(params.arguments) ? params.arguments : {};
+        return ok(await callTool(params.name, args, modern));
+      }
+      case 'resources/list':
+        return ok({ resources: [] });
+      case 'resources/templates/list':
+        return ok({ resourceTemplates: [] });
+      case 'prompts/list':
+        return ok({ prompts: [] });
+      default:
+        return rpcError(id, -32601, `Method not found: ${method}`);
+    }
+  }
+
+  return { handle, listTools };
+}
+
+function rpcError(id, code, message, data) {
+  return { jsonrpc: '2.0', id: id ?? null, error: { code, message, ...(data === undefined ? {} : { data }) } };
+}
+
+export function runStdioServer(options = {}) {
+  const server = createServer(options);
+  const input = options.input || process.stdin;
+  const output = options.output || process.stdout;
+  const write = (message) => output.write(`${JSON.stringify(message)}\n`);
+  const pending = new Set();
+
+  const lines = readline.createInterface({ input, crlfDelay: Infinity });
+  lines.on('line', (line) => {
+    if (!line.trim()) return;
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      write(rpcError(null, -32700, 'Parse error.'));
+      return;
+    }
+    const task = (async () => {
+      try {
+        if (Array.isArray(message)) {
+          const replies = (await Promise.all(message.map((entry) => server.handle(entry)))).filter(Boolean);
+          if (replies.length) write(replies);
+        } else {
+          const reply = await server.handle(message);
+          if (reply) write(reply);
+        }
+      } catch (error) {
+        process.stderr.write(`[warudo-agent-bridge] ${error && error.stack ? error.stack : error}\n`);
+        if (!Array.isArray(message) && message && message.id !== undefined && message.id !== null) write(rpcError(message.id, -32603, 'Internal error.'));
+      }
+    })();
+    pending.add(task);
+    task.finally(() => pending.delete(task));
+  });
+  lines.on('close', async () => {
+    await Promise.allSettled([...pending]);
+    if (!options.keepAlive) process.exit(0);
+  });
+  return server;
+}
