@@ -41,6 +41,27 @@ test('notifications never get a reply and unknown methods and tools are protocol
   assert.equal((await call(server, 2, 'tools/call', { name: 'warudo_nope', arguments: {} })).error.code, -32602);
 });
 
+test('modern list results carry ttlMs and cacheScope; legacy list results do not', async () => {
+  const server = createServer({ home: 'unused' });
+  const lists = [
+    ['tools/list', 'tools'],
+    ['prompts/list', 'prompts'],
+    ['resources/list', 'resources'],
+    ['resources/templates/list', 'resourceTemplates'],
+  ];
+  for (const [method, key] of lists) {
+    const modern = (await call(server, 1, method, META())).result;
+    assert.equal(modern.resultType, 'complete', `${method} modern resultType`);
+    assert.equal(typeof modern.ttlMs, 'number', `${method} needs a number ttlMs`);
+    assert.ok(modern.ttlMs >= 0, `${method} ttlMs must be >= 0`);
+    assert.ok(['public', 'private'].includes(modern.cacheScope), `${method} cacheScope must be public or private`);
+    assert.ok(Array.isArray(modern[key]), `${method} keeps its ${key} array`);
+    const legacy = (await call(server, 2, method, {})).result;
+    assert.equal('ttlMs' in legacy, false, `${method} legacy reply must not add ttlMs`);
+    assert.equal('cacheScope' in legacy, false, `${method} legacy reply must not add cacheScope`);
+  }
+});
+
 test('every tool is well formed for strict MCP clients', async () => {
   const server = createServer({ home: 'unused' });
   const { result } = await call(server, 1, 'tools/list', {});
