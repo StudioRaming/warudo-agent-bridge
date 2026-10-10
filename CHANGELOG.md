@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Preserve unrelated Codex TOML settings when comments or single-line strings contain triple quotes; correctly recognize escaped and four/five-quote multiline string endings during bridge registration/removal.
+
 ## 0.2.0 - 2026-09-28
 
 First public release.
