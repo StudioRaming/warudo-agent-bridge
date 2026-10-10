@@ -36,7 +36,10 @@ export function parseArgs(argv) {
     const arg = argv[i];
     const [name, inline] = arg.startsWith('--') && arg.includes('=') ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)] : [arg, undefined];
     if (VALUE_OPTIONS.has(name)) {
-      if (inline === undefined && i + 1 >= argv.length) throw new Error(`${name} needs a value.`);
+      if (inline === undefined && (i + 1 >= argv.length ||
+          (argv[i + 1].startsWith('-') && argv[i + 1] !== '-' && !/^-\d/.test(argv[i + 1])))) {
+        throw new Error(`${name} needs a value. Use ${name}=VALUE for a value starting with a dash.`);
+      }
       options[optionKey(name)] = inline !== undefined ? inline : argv[++i];
     } else if (FLAG_OPTIONS.has(name) && inline === undefined) {
       options[optionKey(name)] = true;
