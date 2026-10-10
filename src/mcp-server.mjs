@@ -25,6 +25,9 @@ const textContent = (value) => ({ type: 'text', text: typeof value === 'string' 
 const isCapture = (name) => name === 'warudo_camera_capture' || name === 'warudo_screen_capture' || name === 'warudo_analysis_capture';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const IDEMPOTENT_KINDS = new Set(['read', 'set', 'lease']);
+// 2026-07-28 list results must carry ttlMs (int >= 0) and cacheScope ("public" | "private"); Claude Code rejects them otherwise.
+// Values equal the SDK defaults: no caching, private scope. The tool list is fixed per process (listChanged: false).
+const LIST_CACHE_FIELDS = { ttlMs: 0, cacheScope: 'private' };
 
 function errorPayload(error) {
   if (error instanceof BridgeUnknownError) return { code: 'UNKNOWN', message: error.message, retrySafe: false, details: error.details };
@@ -111,6 +114,7 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
       return rpcError(id, -32022, 'Unsupported protocol version', { supported: [...MODERN_VERSIONS, ...LEGACY_VERSIONS], requested });
     }
     const ok = (result) => ({ jsonrpc: '2.0', id, result: modern ? { resultType: 'complete', ...result } : result });
+    const list = (result) => (modern ? { ...LIST_CACHE_FIELDS, ...result } : result);
 
     switch (method) {
       case 'initialize': {
@@ -128,7 +132,7 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
       case 'ping':
         return ok({});
       case 'tools/list':
-        return ok({ tools: listTools() });
+        return ok(list({ tools: listTools() }));
       case 'tools/call': {
         if (typeof params.name !== 'string') return rpcError(id, -32602, 'tools/call requires params.name.');
         if (!TOOL_BY_NAME.has(params.name)) return rpcError(id, -32602, `Unknown tool: ${params.name}`);
@@ -136,11 +140,11 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
         return ok(await callTool(params.name, args, modern));
       }
       case 'resources/list':
-        return ok({ resources: [] });
+        return ok(list({ resources: [] }));
       case 'resources/templates/list':
-        return ok({ resourceTemplates: [] });
+        return ok(list({ resourceTemplates: [] }));
       case 'prompts/list':
-        return ok({ prompts: [] });
+        return ok(list({ prompts: [] }));
       default:
         return rpcError(id, -32601, `Method not found: ${method}`);
     }
