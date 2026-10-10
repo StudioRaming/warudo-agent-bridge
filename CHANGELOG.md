@@ -4,6 +4,9 @@
 
 ### Fixed
 - Check resolved screenshot evidence paths before reading PNGs, rejecting file symlinks or directory junctions that point outside the evidence directory.
+- Validate install/uninstall client selections before changing files, runtime installation, or client registrations. Unknown client names now fail before any external effects.
+- Reject a missing CLI option value before it can consume another flag such as `--skip-runtime`; dash-leading literal values can use `--name=VALUE`.
+- Preserve unrelated Codex TOML settings when comments or single-line strings contain triple quotes; correctly recognize escaped and four/five-quote multiline string endings during bridge registration/removal.
 
 ## 0.2.0 - 2026-09-28
 
