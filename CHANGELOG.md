@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Check resolved screenshot evidence paths before reading PNGs, rejecting file symlinks or directory junctions that point outside the evidence directory.
+
 ## 0.2.0 - 2026-09-28
 
 First public release.
