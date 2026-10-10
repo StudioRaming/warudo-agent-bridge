@@ -283,8 +283,19 @@ export async function readEvidencePng(explicitHome, candidate) {
   const file = evidencePngPath(explicitHome, candidate);
   let data;
   try {
-    data = await fs.readFile(file);
+    // Lexical containment alone permits a PNG symlink or directory junction
+    // inside evidence to point outside it. Check the resolved target as well.
+    const evidence = await fs.realpath(path.join(runtimeDir(explicitHome), 'evidence'));
+    const resolved = await fs.realpath(file);
+    const relative = path.relative(evidence, resolved);
+    if (!relative || relative === '..' || relative.startsWith('..' + path.sep) ||
+        path.isAbsolute(relative) || path.extname(resolved).toLowerCase() !== '.png') {
+      throw new BridgeError('EVIDENCE_PATH_REJECTED',
+        'Only PNG files resolving inside the bridge evidence directory may be read.', { evidence });
+    }
+    data = await fs.readFile(resolved);
   } catch (error) {
+    if (error instanceof BridgeError) throw error;
     throw new BridgeError('EVIDENCE_READ_FAILED', 'Capture evidence PNG could not be read.', { path: file, cause: error.code });
   }
   return { path: file, data };
