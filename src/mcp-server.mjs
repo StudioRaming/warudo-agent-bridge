@@ -123,12 +123,12 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
         return ok({ protocolVersion: legacyVersion, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: INSTRUCTIONS });
       }
       case 'server/discover':
-        return ok({
+        return ok(list({
           supportedVersions: [...MODERN_VERSIONS, ...LEGACY_VERSIONS],
           capabilities: { tools: { listChanged: false } },
           _meta: { 'io.modelcontextprotocol/serverInfo': SERVER_INFO },
           instructions: INSTRUCTIONS,
-        });
+        }));
       case 'ping':
         return ok({});
       case 'tools/list':
