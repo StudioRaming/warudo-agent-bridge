@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Reject a missing CLI option value before it can consume another flag such as `--skip-runtime`; dash-leading literal values can use `--name=VALUE`.
+
 ## 0.2.0 - 2026-09-28
 
 First public release.
