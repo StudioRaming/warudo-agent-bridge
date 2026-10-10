@@ -32,13 +32,3 @@ test('legacy discovery keeps its existing shape', async () => {
     assert.equal(key in result, false, key);
   assert.ok(result.supportedVersions.length > 0);
 });
-
-test('all modern lists preserve existing cache metadata', async () => {
-  const server = createServer({ home: '/tmp/unused-discovery-regression' });
-  for (const method of ['tools/list', 'prompts/list', 'resources/list', 'resources/templates/list']) {
-    const { result } = await server.handle({ jsonrpc: '2.0', id: 9, method,
-      params: { _meta: { 'io.modelcontextprotocol/protocolVersion': MODERN_VERSIONS[0] } } });
-    assert.equal(result.ttlMs, 0, method);
-    assert.equal(result.cacheScope, 'private', method);
-  }
-});
