@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Validate install/uninstall client selections before changing files, runtime installation, or client registrations. Unknown client names now fail before any external effects.
+
 ## 0.2.0 - 2026-09-28
 
 First public release.

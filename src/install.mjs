@@ -197,6 +197,8 @@ function resolveClients(requested, detected) {
 }
 
 export function install(options = {}) {
+  // Reject invalid client selections before touching installed files or discovering clients.
+  resolveClients(options.clients, {});
   const home = bridgeHome(options.home);
   const backupRoot = path.join(backupsDir(home), `${timestamp()}-install`);
   fs.mkdirSync(runtimeDir(home), { recursive: true });
@@ -233,6 +235,8 @@ export function install(options = {}) {
 }
 
 export function uninstall(options = {}) {
+  // Reject invalid client selections before touching installed files or discovering clients.
+  resolveClients(options.clients, {});
   const home = bridgeHome(options.home);
   const backupRoot = path.join(backupsDir(home), `${timestamp()}-uninstall`);
   const report = { home, backups: backupRoot };
