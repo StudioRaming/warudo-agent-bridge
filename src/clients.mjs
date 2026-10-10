@@ -38,13 +38,29 @@ function codexSectionOwner(line) {
 // string content, never a table header, even when it starts with "[".
 function multiLineState(line, open) {
   let state = open;
-  for (let i = 0; i + 3 <= line.length; i += 1) {
-    const three = line.slice(i, i + 3);
-    if (three !== '"""' && three !== "'''") continue;
-    if (state === null) state = three;
-    else if (state === three) state = null;
-    else continue;
-    i += 2;
+  let quote = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (state !== null) {
+      if (state === '"""' && ch === '\\') { i += 1; continue; }
+      if (line.startsWith(state, i)) {
+        // TOML permits one or two quote characters immediately before the closing triple.
+        while (line[i + 1] === ch) i += 1;
+        state = null;
+      }
+      continue;
+    }
+    if (quote !== null) {
+      if (quote === '"' && ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '#') break;
+    if (ch !== '"' && ch !== "'") continue;
+    if (line.slice(i, i + 3) === ch.repeat(3)) {
+      state = ch.repeat(3);
+      i += 2;
+    } else quote = ch;
   }
   return state;
 }
@@ -225,3 +241,4 @@ export function registrationStatus(client) {
     return `error: ${error.message}`;
   }
 }
+
