@@ -14,9 +14,15 @@ export async function startFakeRuntime({ protocol = 2, handler = () => ({}), cla
   const seen = [];
   let running = true;
 
+  // Like the real runtime (temp file + File.Replace): a reader never sees a half-written file.
+  const writeAtomic = async (file, body) => {
+    const temp = `${file}.${crypto.randomUUID()}.tmp`;
+    await fs.writeFile(temp, body);
+    await fs.rename(temp, file);
+  };
   const writeState = async (overrides = {}) => {
     Object.assign(state, overrides);
-    await fs.writeFile(path.join(root, 'state.json'), JSON.stringify({ ...state, heartbeatEpoch: Date.now() }));
+    await writeAtomic(path.join(root, 'state.json'), JSON.stringify({ ...state, heartbeatEpoch: Date.now() }));
   };
   await writeState();
   const heartbeat = setInterval(() => { if (running) writeState().catch(() => {}); }, 200);
@@ -41,7 +47,7 @@ export async function startFakeRuntime({ protocol = 2, handler = () => ({}), cla
         } catch (error) {
           reply = { ok: false, error: error.message };
         }
-        await fs.writeFile(path.join(root, 'responses', name), JSON.stringify({ requestId: body.requestId, sessionId: state.sessionId, operation: body.operation, owner: body.owner, ...reply }));
+        await writeAtomic(path.join(root, 'responses', name), JSON.stringify({ requestId: body.requestId, sessionId: state.sessionId, operation: body.operation, owner: body.owner, ...reply }));
         await fs.rm(protocol >= 2 ? claimed : file, { force: true });
       }
       await new Promise((resolve) => setTimeout(resolve, 10));
