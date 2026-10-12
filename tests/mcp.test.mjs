@@ -122,6 +122,42 @@ test('a lease held by another agent is surfaced, not overridden', async () => {
   }
 });
 
+test('plugin settings tools: reads need no lease, a patch takes it and is idempotent, ids are required', async () => {
+  const byName = Object.fromEntries(TOOLS.map((tool) => [tool.name, tool]));
+  assert.equal(byName.warudo_plugin_list.needsLease, false);
+  assert.equal(byName.warudo_plugin_fields.needsLease, false);
+  assert.equal(byName.warudo_plugin_patch.needsLease, true);
+  assert.deepEqual(byName.warudo_plugin_fields.inputSchema.required, ['pluginId']);
+  assert.deepEqual(byName.warudo_plugin_patch.inputSchema.required, ['pluginId', 'fields']);
+  assert.ok('pluginId' in byName.warudo_trigger_invoke.inputSchema.properties, 'trigger must accept a plugin');
+  // The description is what tells an agent that a render-pipeline switch is not guaranteed to be reported as a restart.
+  assert.match(byName.warudo_plugin_patch.description, /restart/i);
+
+  let leaseOwner = null;
+  const runtime = await startFakeRuntime({
+    handler: (op, params, owner) => {
+      if (op === 'lease.acquire') { leaseOwner = owner; return { leaseOwner }; }
+      if (op === 'plugin.patch') {
+        if (leaseOwner !== owner) throw new Error('LEASE_REQUIRED: acquire the write lease first.');
+        return { before: { Enabled: true }, after: params.fields, persisted: true, restartReported: false };
+      }
+      return [];
+    },
+  });
+  try {
+    const server = createServer({ home: runtime.home, owner: 'agent-a', timeoutMs: 3000 });
+    await call(server, 1, 'tools/call', { name: 'warudo_plugin_list', arguments: { query: 'nilo' } });
+    await call(server, 2, 'tools/call', { name: 'warudo_plugin_fields', arguments: { pluginId: 'Warudo.NiloToon' } });
+    assert.deepEqual(runtime.seen.map((r) => r.operation), ['plugin.list', 'plugin.fields']);
+    const patched = await call(server, 3, 'tools/call', { name: 'warudo_plugin_patch', arguments: { pluginId: 'Warudo.NiloToon', fields: { Enabled: false } } });
+    assert.equal(patched.result.isError, false);
+    assert.deepEqual(JSON.parse(patched.result.content[0].text).after, { Enabled: false });
+    assert.deepEqual(runtime.seen.slice(2).map((r) => r.operation), ['plugin.patch', 'lease.acquire', 'plugin.patch']);
+  } finally {
+    await runtime.stop();
+  }
+});
+
 test('captures come back as image content and structured content follows the negotiated version', async () => {
   const runtime = await startFakeRuntime({
     handler: async (op) => {
@@ -161,7 +197,7 @@ test('asset_wait_loaded polls until the asset is active with a GameObject', asyn
     const server = createServer({ home: runtime.home, timeoutMs: 3000 });
     const reply = await call(server, 1, 'tools/call', { name: 'warudo_asset_wait_loaded', arguments: { assetId: 'a', source: 'character://data/Characters/x.vrm', timeoutMs: 5000 } });
     const data = JSON.parse(reply.result.content[0].text);
-    assert.equal(data.loaded, true);
+    assert.equal(data.loaded, true, reply.result.content[0].text);
     assert.ok(runtime.seen.every((r) => r.operation === 'asset.get'));
   } finally {
     await runtime.stop();

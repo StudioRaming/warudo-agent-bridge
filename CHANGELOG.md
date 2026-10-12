@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Plugin settings (Tools: 66)
+- `warudo_plugin_list`, `warudo_plugin_fields` and `warudo_plugin_patch` read and change what WARUDO's Settings tab shows (plugin data inputs such as `Warudo.NiloToon` Enabled or `Warudo.Core` RenderResolutionMultiply). Same validation, rollback and before/after contract as the asset tools.
+- A patch is applied live and saved through `PluginManager.SavePluginData`, the call the Settings tab uses (`Plugins/Data/<id>.json`). The reply reports `persisted`, the render pipeline before and after (NiloToon Enabled switches URP and Built-in), and `restartReported: false` because WARUDO exposes no restart signal for plugin settings.
+- `warudo_trigger_invoke` also presses plugin trigger buttons (`pluginId`).
+- The runtime reports the `plugin-settings` feature, so a newer MCP server can tell whether the installed runtime has these operations.
+
 ### Fixed
 - Check resolved screenshot evidence paths before reading PNGs, rejecting file symlinks or directory junctions that point outside the evidence directory.
 - Validate install/uninstall client selections before changing files, runtime installation, or client registrations. Unknown client names now fail before any external effects.

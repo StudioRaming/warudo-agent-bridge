@@ -36,7 +36,7 @@ ChatGPTやClaudeのようなAIは、もともと**文字で会話することし
 
 **MCP**（Model Context Protocol）は、AIに**ツールを与える共通規格**です。USBを思い浮かべるとわかりやすいですね。規格が同じなので、どのAIアプリにも差し込んで使えます。
 
-**WARUDO Agent Bridge**はWARUDO用のMCPツール集です。インストールすると、AIが「カメラを移動する」「表情を変える」「ポーズを作る」「写真を撮る」といったツール63個を使えるようになります。
+**WARUDO Agent Bridge**はWARUDO用のMCPツール集です。インストールすると、AIが「カメラを移動する」「表情を変える」「ポーズを作る」「写真を撮る」といったツール66個を使えるようになります。
 
 ```
 私 (チャットでお願い)
@@ -141,7 +141,7 @@ AIに送ったメッセージとその結果です。写真は各リクエスト
 | 「シーンのリストを見せて、昨日使ってたシーンを開いてよ。」 | `warudo_scene_list` → `warudo_scene_open` |
 | 「ブループリントでこのノードの値を変えてよ。」 | `warudo_blueprint_get` → `warudo_node_patch` |
 
-全ツール63個は[docs/TOOLS.md](docs/TOOLS.md)にあります。
+全ツール66個は[docs/TOOLS.md](docs/TOOLS.md)にあります。
 
 **リクエストのコツ**
 

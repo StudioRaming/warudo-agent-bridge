@@ -24,7 +24,7 @@ namespace StudioRaming.WarudoAgentBridge
     {
         const string Version = "0.2.0";
         const int Protocol = 2;
-        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render" };
+        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings" };
 
         string home, root, session, leaseOwner, activeRequest;
         DateTime leaseUntil;
@@ -39,7 +39,7 @@ namespace StudioRaming.WarudoAgentBridge
         {
             "status", "lease.status", "runtime.logs",
             "scene.list", "scene.get", "scene.snapshot", "scene.snapshots",
-            "asset.types", "asset.fields", "asset.list", "asset.get", "resource.list",
+            "asset.types", "asset.fields", "asset.list", "asset.get", "resource.list", "plugin.list", "plugin.fields",
             "camera.get", "camera.capture", "screen.capture", "analysis.capture",
             "hierarchy.list", "object.get", "component.get", "render.globals",
             "character.expressions", "character.blendshapes", "character.pose.get", "character.pose.save", "character.ik.get",
@@ -293,6 +293,10 @@ namespace StudioRaming.WarudoAgentBridge
                 case "asset.enabled":
                 case "asset.source":
                     return await AssetOperation(op, p);
+                case "plugin.list":
+                case "plugin.fields":
+                case "plugin.patch":
+                    return await PluginOperation(op, p);
                 case "entity.trigger":
                     return EntityTrigger(p);
                 case "resource.list":

@@ -23,6 +23,7 @@ const objectRef = {
 };
 const fieldValues = { type: 'object', minProperties: 1, maxProperties: 40, description: 'Field name (dotted path for nested data, e.g. "LeftHandIK.Enabled") to new value.' };
 const fieldNames = { type: 'array', maxItems: 80, items: { type: 'string' }, description: 'Field names or dotted paths to read with current values.' };
+const pluginRef = { pluginId: { type: 'string', description: 'Plugin type id (e.g. "Warudo.NiloToon", "Warudo.Core") or plugin entity id, both from warudo_plugin_list.' } };
 const RESOURCE_TYPES = ['Character', 'CharacterAnimation', 'CharacterHandPose', 'Environment', 'Prop', 'Image', 'Video', 'Music', 'Sound', 'Particle', 'LUT', 'LensDirt'];
 const IK_CHAINS = ['Spine', 'LeftHand', 'RightHand', 'LeftFoot', 'RightFoot'];
 
@@ -55,8 +56,13 @@ const DEFINITIONS = [
   ['warudo_asset_enabled', 'Enable asset', 'Enable or disable an asset.', 'asset.enabled', 'set', object({ ...assetId, enabled: { type: 'boolean' } }, ['assetId', 'enabled'])],
   ['warudo_asset_source', 'Load source', 'Load a character, environment or prop from a source URI listed by warudo_resource_list. Loading is asynchronous: follow with warudo_asset_wait_loaded.', 'asset.source', 'write', object({ ...assetId, source: { type: 'string' } }, ['assetId', 'source'])],
   ['warudo_asset_wait_loaded', 'Wait for load', 'Poll an asset until it is active with a loaded GameObject (and, if given, the expected source), or until the timeout.', 'asset.get', 'read', object({ ...assetId, source: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 500, maximum: 120000, default: 30000 } }, ['assetId']), { local: 'waitLoaded' }],
-  ['warudo_trigger_invoke', 'Press trigger button', 'Press an inspector trigger button on an asset (assetId) or a blueprint node (graphId + nodeId). List trigger keys with warudo_asset_fields or warudo_node_fields.', 'entity.trigger', 'destructive', object({ ...assetId, ...nodeRef, trigger: { type: 'string' } }, ['trigger'])],
+  ['warudo_trigger_invoke', 'Press trigger button', 'Press an inspector trigger button on an asset (assetId), a plugin (pluginId) or a blueprint node (graphId + nodeId). List trigger keys with warudo_asset_fields, warudo_plugin_fields or warudo_node_fields.', 'entity.trigger', 'destructive', object({ ...assetId, ...pluginRef, ...nodeRef, trigger: { type: 'string' } }, ['trigger'])],
   ['warudo_resource_list', 'List resources', 'List installed resources WARUDO offers for a type, with the URIs that source, idle animation and similar fields accept.', 'resource.list', 'read', object({ type: { type: 'string', enum: RESOURCE_TYPES }, query: { type: 'string' }, ...paging(500) }, ['type'])],
+
+  'Plugin settings',
+  ['warudo_plugin_list', 'List plugins', 'List the loaded WARUDO plugins, which hold the values shown on the Settings tab: type id (e.g. "Warudo.NiloToon" = URP/NiloToon, "Warudo.Core" = render resolution, DLSS), name, version, author, entity id and field count. query filters by id, name or author.', 'plugin.list', 'read', object({ query: { type: 'string' } })],
+  ['warudo_plugin_fields', 'Plugin fields', 'Discover a plugin\'s Settings-tab fields (types, labels, enum choices) and triggers. Pass fields to read current values. Same shape as warudo_asset_fields.', 'plugin.fields', 'read', object({ ...pluginRef, fields: fieldNames, path: { type: 'string', description: 'Nested structured data path to list.' }, query: { type: 'string' }, ...paging(80) }, ['pluginId'])],
+  ['warudo_plugin_patch', 'Patch plugin settings', 'Set Settings-tab fields of a plugin (booleans, numbers, enums, strings, vectors, colors). Validated first and rolled back on failure, like warudo_asset_patch; returns before and after. The change is applied live and saved to Plugins/Data/<id>.json the way the Settings tab saves it. Some settings change the whole renderer: Warudo.NiloToon Enabled switches the render pipeline (true = URP, false = Built-in); the reply carries renderingPipeline before/after so you can see it took effect. WARUDO reports no restart requirement for plugin settings (restartReported is always false), so verify the effect instead of assuming it, and restore the before values when you are done.', 'plugin.patch', 'set', object({ ...pluginRef, fields: fieldValues }, ['pluginId', 'fields'])],
 
   'Characters',
   ['warudo_character_expressions', 'Expressions', 'List a character\'s expressions and which are active.', 'character.expressions', 'read', object(characterId)],

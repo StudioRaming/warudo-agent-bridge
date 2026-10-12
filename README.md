@@ -36,7 +36,7 @@ ChatGPT and Claude can normally **only chat in text**. They cannot click buttons
 
 **MCP** (Model Context Protocol) is a **common spec for giving tools to AI**. Think of USB. The spec is the same everywhere, so it plugs into any AI app.
 
-**WARUDO Agent Bridge** is a set of MCP tools for WARUDO. Once installed, the AI gets 63 tools: "move camera", "change expression", "set pose", "take photo" and more.
+**WARUDO Agent Bridge** is a set of MCP tools for WARUDO. Once installed, the AI gets 66 tools: "move camera", "change expression", "set pose", "take photo" and more.
 
 ```
 you (ask in chat)
@@ -141,7 +141,7 @@ Poses work by saying which way to aim body parts. The bridge prevents impossible
 | "Show the scene list and open the one I used yesterday." | `warudo_scene_list` → `warudo_scene_open` |
 | "Change this node value in the blueprint." | `warudo_blueprint_get` → `warudo_node_patch` |
 
-All 63 tools are in [docs/TOOLS.md](docs/TOOLS.md).
+All 66 tools are in [docs/TOOLS.md](docs/TOOLS.md).
 
 **Tips for good requests**
 

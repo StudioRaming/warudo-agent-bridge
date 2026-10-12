@@ -40,7 +40,7 @@ ChatGPT나 Claude 같은 AI는 원래 **글로 대화만** 할 수 있습니다.
 같으니 어떤 AI 앱에든 꽂아 쓸 수 있습니다.
 
 **WARUDO Agent Bridge**는 WARUDO용 MCP 도구 모음입니다. 설치하면 AI가 "카메라 옮기기", "표정 바꾸기",
-"포즈 잡기", "사진 찍기" 같은 도구 63개를 쓸 수 있게 됩니다.
+"포즈 잡기", "사진 찍기" 같은 도구 66개를 쓸 수 있게 됩니다.
 
 ```
 나 (채팅으로 부탁)
@@ -152,7 +152,7 @@ AI에게 보낸 말과 그 결과입니다. 사진은 각 부탁에 맞는 도�
 | "씬 목록 보여 주고 어제 쓰던 씬 열어 줘." | `warudo_scene_list` → `warudo_scene_open` |
 | "블루프린트에서 이 노드 값 바꿔 줘." | `warudo_blueprint_get` → `warudo_node_patch` |
 
-전체 도구 63개는 [docs/TOOLS.md](docs/TOOLS.md)에 있습니다.
+전체 도구 66개는 [docs/TOOLS.md](docs/TOOLS.md)에 있습니다.
 
 **부탁 잘하는 요령**
 

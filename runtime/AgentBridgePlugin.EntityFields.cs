@@ -8,6 +8,7 @@ using UnityEngine;
 using Warudo.Core;
 using Warudo.Core.Data;
 using Warudo.Core.Graphs;
+using Warudo.Core.Plugins;
 using Warudo.Core.Scenes;
 
 namespace StudioRaming.WarudoAgentBridge
@@ -170,7 +171,9 @@ namespace StudioRaming.WarudoAgentBridge
             return ConvertValue(token, type);
         }
 
-        object EntityPatch(Entity entity, JObject fields, object header)
+        // persist, when given, runs after a successful patch (plugin settings are saved the way WARUDO's Settings tab saves them).
+        // A save failure is reported, not thrown: the live values are already applied and the caller needs the before/after.
+        object EntityPatch(Entity entity, JObject fields, object header, Action persist = null)
         {
             if (fields == null || fields.Count == 0 || fields.Count > 40) throw new ArgumentException("fields must contain 1..40 entries.");
             var prepared = new List<KeyValuePair<string, object>>();
@@ -216,7 +219,11 @@ namespace StudioRaming.WarudoAgentBridge
                 Entity owner = OwnerOf(entity, item.Key, out key);
                 after[item.Key] = FieldValue(owner.GetDataInput(key));
             }
-            return new { entity = header, before, after, persisted = false };
+            if (persist == null) return new { entity = header, before, after, persisted = false };
+            string persistError = null;
+            try { persist(); }
+            catch (Exception saveError) { persistError = saveError.GetBaseException().Message; }
+            return new { entity = header, before, after, persisted = persistError == null, persistError };
         }
 
         static void Apply(Entity entity, string path, object value)
@@ -236,7 +243,13 @@ namespace StudioRaming.WarudoAgentBridge
             string key = Required(p, "trigger");
             Entity entity;
             object header;
-            if (p["assetId"] != null)
+            if (p["pluginId"] != null)
+            {
+                Plugin plugin = PluginByRef(p);
+                entity = plugin;
+                header = DescribePlugin(plugin);
+            }
+            else if (p["assetId"] != null)
             {
                 Asset asset = AssetById(p);
                 entity = asset;
@@ -249,7 +262,7 @@ namespace StudioRaming.WarudoAgentBridge
                 header = DescribeNode(node);
             }
             TriggerPort port = entity.GetTriggerPort(key);
-            if (port == null) throw new ArgumentException("Unknown trigger '" + key + "'. List triggers with warudo_asset_fields or warudo_node_fields.");
+            if (port == null) throw new ArgumentException("Unknown trigger '" + key + "'. List triggers with warudo_asset_fields, warudo_plugin_fields or warudo_node_fields.");
             entity.InvokeTrigger(key);
             return new { entity = header, trigger = key, invoked = true };
         }
