@@ -44,7 +44,7 @@ namespace StudioRaming.WarudoAgentBridge
             "hierarchy.list", "object.get", "component.get", "render.globals",
             "character.expressions", "character.blendshapes", "character.pose.get", "character.pose.save", "character.ik.get",
             "graph.list", "graph.get", "node.fields",
-            "maintenance.cleanup", "pointer.state",
+            "maintenance.cleanup", "pointer.state", "ui.list", "ui.at",
         };
 
         protected override void OnCreate()
@@ -353,6 +353,10 @@ namespace StudioRaming.WarudoAgentBridge
                 case "pointer.release":
                 case "pointer.state":
                     return await PointerOperation(op, p, owner);
+                case "ui.list":
+                case "ui.at":
+                case "ui.set_text":
+                    return UiOperation(op, p);
                 case "maintenance.cleanup":
                     return RunMaintenance((bool?)p["dryRun"] ?? true);
                 default:
