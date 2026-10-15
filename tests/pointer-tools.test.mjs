@@ -207,3 +207,32 @@ test('ui reads and text entry pass their arguments through unchanged', async () 
     await runtime.stop();
   }
 });
+
+test('the feature check runs once per runtime session, not once per call', async () => {
+  const runtime = await pointerRuntime(() => ({ ok: 1 }));
+  try {
+    const server = createServer({ home: runtime.home, timeoutMs: 3000 });
+    const statusCalls = () => runtime.seen.filter((request) => request.operation === 'status').length;
+    for (let id = 1; id <= 4; id += 1) assert.equal((await call(server, id, 'warudo_ui_list')).result.isError, false);
+    assert.equal(statusCalls(), 1, 'four calls, one feature check');
+    // A reload gives the runtime a new sessionId: the next call checks again, then stays quiet.
+    await runtime.writeState({ sessionId: 'b'.repeat(32) });
+    for (let id = 5; id <= 7; id += 1) assert.equal((await call(server, id, 'warudo_pointer_state')).result.isError, false);
+    assert.equal(statusCalls(), 2);
+  } finally {
+    await runtime.stop();
+  }
+});
+
+test('a missing feature is never cached, so a reinstall is noticed on the next call', async () => {
+  let features = ['claim'];
+  const runtime = await startFakeRuntime({ handler: (op) => (op === 'status' ? { version: 'test', features } : { ok: 1 }) });
+  try {
+    const server = createServer({ home: runtime.home, timeoutMs: 3000 });
+    assert.equal(payload(await call(server, 1, 'warudo_ui_list')).code, 'RUNTIME_OUTDATED');
+    features = ['claim', 'pointer'];
+    assert.equal((await call(server, 2, 'warudo_ui_list')).result.isError, false);
+  } finally {
+    await runtime.stop();
+  }
+});

@@ -1,6 +1,6 @@
 import readline from 'node:readline';
 import process from 'node:process';
-import { request, responseError, readEvidencePng, defaultOwner, BridgeError, BridgeUnknownError } from './transport.mjs';
+import { request, responseError, readEvidencePng, readHeartbeat, defaultOwner, BridgeError, BridgeUnknownError } from './transport.mjs';
 import { buildClickPlan, buildPointerPlan, clickPoint, resolveUiTarget } from './pointer-timeline.mjs';
 import { TOOLS, TOOL_BY_NAME } from './tools.mjs';
 import { VERSION } from './version.mjs';
@@ -66,9 +66,24 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
 
   // A newer MCP server can run against the runtime that is still installed in WARUDO. Say so, instead of
   // letting the runtime answer UNKNOWN_OPERATION for every call of a tool it does not have.
+  // A feature found once stays found for that runtime session; a reload gets a new sessionId and is checked again.
+  // The session id comes from the heartbeat file (no mailbox round trip); a miss falls back to the status operation,
+  // which also waits out a reloading bridge. A missing feature is never cached, so a reinstall is noticed at once.
+  const confirmedFeatures = new Map();
   async function requireFeature(feature) {
+    let sessionId;
+    try {
+      sessionId = (await readHeartbeat(home, { allowStale: true })).state.sessionId;
+    } catch {
+      sessionId = undefined;
+    }
+    if (sessionId && confirmedFeatures.get(sessionId)?.has(feature)) return;
     const state = await operation('status', {}, true);
-    if (Array.isArray(state.features) && state.features.includes(feature)) return;
+    if (Array.isArray(state.features) && state.features.includes(feature)) {
+      sessionId = state.sessionId ?? sessionId;
+      if (sessionId) confirmedFeatures.set(sessionId, new Set([...(confirmedFeatures.get(sessionId) ?? []), feature]));
+      return;
+    }
     throw new BridgeError('RUNTIME_OUTDATED', `The WARUDO runtime (version ${state.version ?? 'unknown'}) has no "${feature}" feature. Reinstall the bridge and let WARUDO recompile Playground (about 30 seconds): npx @studioraming/warudo-agent-bridge install`);
   }
 

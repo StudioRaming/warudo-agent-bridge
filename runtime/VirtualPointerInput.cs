@@ -179,7 +179,10 @@ namespace StudioRaming.WarudoAgentBridge
 
         internal PointerState Snapshot()
         {
-            return new PointerState { X = post.X, Y = post.Y, Buttons = post.Buttons, Keys = post.Keys };
+            // What is being answered right now (inside a table: the current row; before it: pre; after it: post), so a
+            // release after an aborted gesture lets go of what is actually still held, not of what the gesture would have left.
+            PointerFrame row = Row();
+            return new PointerState { X = row.X, Y = row.Y, Buttons = row.Buttons, Keys = row.Keys };
         }
 
         internal Vector2 CurrentPosition { get { PointerFrame row = Row(); return new Vector2(row.X, row.Y); } }
