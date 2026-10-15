@@ -4,6 +4,7 @@ import {
   MAX_FRAMES, buildButtonPlan, buildClickPlan, buildDragPlan, buildKeyPlan, buildMovePlan, buildPointerPlan, buildWheelPlan,
   clickPoint, expandTimeline, resolveUiTarget,
 } from '../src/pointer-timeline.mjs';
+import { MAX_REQUEST_BYTES } from '../src/transport.mjs';
 
 const SCREEN = { width: 1920, height: 1080 };
 const downs = (rows) => rows.flatMap((row, frame) => (row.down ? [frame] : []));
@@ -224,4 +225,12 @@ test('click point is the middle of the rectangle, clipped to the window', () => 
   assert.deepEqual(clickPoint({ rect: [100, 200, 40, 20] }, SCREEN), [120, 210]);
   assert.deepEqual(clickPoint({ rect: [-50, 0, 100, 10] }, SCREEN), [25, 5]);
   assert.deepEqual(clickPoint({ rect: [1900, 1070, 100, 100] }, SCREEN), [1910, 1075]);
+});
+
+test('the longest gesture still fits in one mailbox request', () => {
+  const path = Array.from({ length: 64 }, (_, index) => [12345.678 + index * 3.141, 9876.543 - index * 2.718]);
+  const plan = buildDragPlan({ path, totalFrames: 597, modifiers: ['ctrl', 'shift', 'alt'], capture: true, expectObject: -2147483648, settleFrames: 60 });
+  assert.equal(plan.frames, MAX_FRAMES);
+  const request = JSON.stringify({ protocol: 2, requestId: 'x'.repeat(32), sessionId: 'x'.repeat(32), createdUtc: new Date().toISOString(), owner: 'o'.repeat(128), operation: 'pointer.play', params: plan });
+  assert.ok(Buffer.byteLength(request) < MAX_REQUEST_BYTES / 2, `${Buffer.byteLength(request)} bytes`);
 });

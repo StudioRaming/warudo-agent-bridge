@@ -51,7 +51,9 @@ namespace StudioRaming.WarudoAgentBridge
         // Runs every frame from OnUpdate. Keeps a parked pointer fed and ends it when nobody needs it any more.
         void PointerTick()
         {
-            if (!PointerActive || pointerPlaying || pointerReleasing) return;
+            if (!PointerActive) return;
+            // A play or release feeds the driver itself; this only keeps it alive across the awaits in between (capture).
+            if (pointerPlaying || pointerReleasing) { pointerDriver.LastFeed = Time.realtimeSinceStartup; return; }
             if (!pointerDriver.Feed()) { ReleasePointer(pointerDriver.UserAbort ? "user input" : "driver stopped").Forget(); return; }
             if (DateTime.UtcNow >= leaseUntil || leaseOwner != pointerOwner) ReleasePointer("lease ended").Forget();
             else if ((Time.realtimeSinceStartup - pointerLastCall) * 1000.0 > pointerPolicy.IdleReleaseMs) ReleasePointer("idle timeout").Forget();
