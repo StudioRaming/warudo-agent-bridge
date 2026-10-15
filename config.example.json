@@ -2,6 +2,10 @@
   "componentCall": {
     "allow": []
   },
+  "pointer": {
+    "enabled": true,
+    "idleReleaseMs": 15000
+  },
   "retention": {
     "responsesHours": 1,
     "evidenceDays": 3,

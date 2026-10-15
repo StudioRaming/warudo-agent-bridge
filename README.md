@@ -36,7 +36,7 @@ ChatGPT and Claude can normally **only chat in text**. They cannot click buttons
 
 **MCP** (Model Context Protocol) is a **common spec for giving tools to AI**. Think of USB. The spec is the same everywhere, so it plugs into any AI app.
 
-**WARUDO Agent Bridge** is a set of MCP tools for WARUDO. Once installed, the AI gets 66 tools: "move camera", "change expression", "set pose", "take photo" and more.
+**WARUDO Agent Bridge** is a set of MCP tools for WARUDO. Once installed, the AI gets 78 tools: "move camera", "change expression", "set pose", "take photo" and more.
 
 ```
 you (ask in chat)
@@ -140,8 +140,9 @@ Poses work by saying which way to aim body parts. The bridge prevents impossible
 | "Save the current scene as 'stream_test'." | `warudo_scene_save_as` |
 | "Show the scene list and open the one I used yesterday." | `warudo_scene_list` → `warudo_scene_open` |
 | "Change this node value in the blueprint." | `warudo_blueprint_get` → `warudo_node_patch` |
+| "Click the Apply button in WARUDO's panel while I keep working in another window." | `warudo_ui_list` → `warudo_ui_click` |
 
-All 66 tools are in [docs/TOOLS.md](docs/TOOLS.md).
+All 78 tools are in [docs/TOOLS.md](docs/TOOLS.md).
 
 **Tips for good requests**
 
@@ -375,10 +376,32 @@ Pose tools use Unity humanoid terms, so they fit any humanoid avatar or VRM.
 - `warudo_character_pose_save` writes the pose as a Unity humanoid `.anim`, into WARUDO's own animation list or to any folder (for example a Unity project).
 - `warudo_character_pose_clear` puts the previous idle animation back.
 
+### Virtual pointer (no focus needed)
+
+An agent can click, double click, drag, hover and scroll inside WARUDO's main window while WARUDO is in the background. The bridge plays a short frame-by-frame mouse timeline into Unity's UI input module, and tells the UI that the window has focus for the time it plays. No Windows mouse or keyboard event is sent, WARUDO is not brought to the front, and your real mouse is not moved.
+
+- **What it reaches:** the main-window UI (UGUI: buttons, sliders, toggles, scroll areas, panels), and plugins that follow the contract below.
+- **What it does not reach:** the WARUDO camera (it reads the real mouse; use the camera tools), the WARUDO editor window (another window), and any plugin that reads `Input.mousePosition` or `Input.GetKey` directly.
+- **Typical use:** `warudo_ui_list` (what can be clicked, with rectangles) → `warudo_ui_click` by label, or `warudo_pointer_click` / `warudo_pointer_drag` / `warudo_pointer_wheel` at a point. `capture: true` returns a screenshot taken with the pointer still in place. `warudo_ui_at` shows what covers a point; a click aimed at a covered control stops with `COVERED` instead of hitting what is on top. `warudo_ui_set_text` fills input fields, because typed text cannot be sent. `warudo_pointer_state` shows what is held, `warudo_pointer_release` ends everything.
+- **Safety:** a gesture is at most 600 frames and 64 points. A button left down (several-call drags) or a parked pointer ends when released, when the write lease ends, or after `pointer.idleReleaseMs` of no use. If you click inside WARUDO while it plays, the gesture stops with `USER_INPUT` and the real mouse is yours again. Turn it all off with `pointer.enabled: false`.
+- **Needs this version of the runtime.** An older installed runtime answers `RUNTIME_OUTDATED`: reinstall and let WARUDO recompile Playground.
+
+**Plugin contract (to let a WARUDO plugin see the virtual pointer):**
+
+```csharp
+var module = EventSystem.current?.currentInputModule;
+var input = module?.input;                        // a BaseInput; the bridge swaps it while a gesture plays
+bool virtualInput = module?.inputOverride != null; // treat as focused: do not require Application.isFocused
+// Mouse: input.mousePosition (bottom-left origin), input.GetMouseButton/Down/Up(0..2), input.mouseScrollDelta. Not UnityEngine.Input.
+// Keys and modifiers: input has public bool GetKey/GetKeyDown/GetKeyUp(KeyCode) when virtual; find them by name (reflection or dynamic).
+// Otherwise (inputOverride == null) read the real UnityEngine.Input as before.
+```
+
 ### Configuration
 
 `%USERPROFILE%\.warudo-agent-bridge\config.json` (created from [config.example.json](config.example.json)):
 
+- `pointer`: `enabled` (default `true`) turns the virtual pointer and `warudo_ui_set_text` on or off; `idleReleaseMs` (default 15000, 1000..600000) is how long a parked pointer or held button waits for the next call before it is released.
 - `componentCall.allow`: Unity component methods the agent may call, as `{"typePrefix": "My.Namespace.", "methods": ["Refresh"]}` entries. Empty by default, so `warudo_component_call` is off.
 - `retention`: how long replies, captures, snapshots and pose previews are kept before `warudo_maintenance_cleanup` removes them.
 
