@@ -62,7 +62,10 @@ function render() {
     for (const tool of TOOLS.filter((entry) => entry.group === group)) {
       lines.push(`### ${tool.name}`, '');
       lines.push(tool.description, '');
-      lines.push(`Kind: \`${tool.kind}\` (${KIND[tool.kind]}). Runtime operation: \`${tool.local ? `${tool.operation}, polled by the MCP server` : tool.operation}\`.`, '');
+      const how = tool.local === 'waitLoaded' ? `${tool.operation}, polled by the MCP server`
+        : tool.local === 'uiClick' ? `${tool.operation}, after the MCP server finds the element with ui.list`
+          : tool.plan ? `${tool.operation}, with a frame timeline the MCP server builds from the arguments` : tool.operation;
+      lines.push(`Kind: \`${tool.kind}\` (${KIND[tool.kind]}). Runtime operation: \`${how}\`.${tool.requires ? ` Needs runtime feature \`${tool.requires}\`.` : ''}`, '');
       const properties = Object.entries(tool.inputSchema.properties || {});
       if (properties.length) {
         const required = new Set(tool.inputSchema.required || []);
