@@ -26,8 +26,16 @@ namespace StudioRaming.WarudoAgentBridge
             public double CommandLogMaxMB = 5;
         }
 
+        // The virtual pointer (pointer.* operations). IdleReleaseMs ends a parked pointer nobody has used for that long.
+        sealed class PointerPolicy
+        {
+            public bool Enabled = true;
+            public double IdleReleaseMs = 15000;
+        }
+
         List<CallRule> callRules = new List<CallRule>();
         RetentionPolicy retention = new RetentionPolicy();
+        PointerPolicy pointerPolicy = new PointerPolicy();
         string configError;
         DateTime configStamp = DateTime.MinValue;
 
@@ -37,6 +45,7 @@ namespace StudioRaming.WarudoAgentBridge
         {
             var rules = new List<CallRule>();
             var policy = new RetentionPolicy();
+            var pointer = new PointerPolicy();
             configError = null;
             try
             {
@@ -63,6 +72,19 @@ namespace StudioRaming.WarudoAgentBridge
                         policy.PosePreviewHours = Positive(r, "posePreviewHours", policy.PosePreviewHours);
                         policy.CommandLogMaxMB = Positive(r, "commandLogMaxMB", policy.CommandLogMaxMB);
                     }
+                    JObject pointerConfig = config["pointer"] as JObject;
+                    if (pointerConfig != null)
+                    {
+                        JToken enabled = pointerConfig["enabled"];
+                        if (enabled != null && enabled.Type != JTokenType.Boolean) throw new FormatException("pointer.enabled must be true or false.");
+                        if (enabled != null) pointer.Enabled = (bool)enabled;
+                        double? idle = (double?)pointerConfig["idleReleaseMs"];
+                        if (idle != null)
+                        {
+                            if (double.IsNaN(idle.Value) || idle.Value < 1000 || idle.Value > 600000) throw new FormatException("pointer.idleReleaseMs must be 1000..600000.");
+                            pointer.IdleReleaseMs = idle.Value;
+                        }
+                    }
                 }
             }
             catch (Exception e)
@@ -71,9 +93,11 @@ namespace StudioRaming.WarudoAgentBridge
                 configError = "config.json ignored: " + e.Message;
                 rules.Clear();
                 policy = new RetentionPolicy();
+                pointer = new PointerPolicy();
             }
             callRules = rules;
             retention = policy;
+            pointerPolicy = pointer;
         }
 
         void RefreshConfig()

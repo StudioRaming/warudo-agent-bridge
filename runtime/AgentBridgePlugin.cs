@@ -24,7 +24,7 @@ namespace StudioRaming.WarudoAgentBridge
     {
         const string Version = "0.2.0";
         const int Protocol = 2;
-        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings" };
+        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings", "pointer" };
 
         string home, root, session, leaseOwner, activeRequest;
         DateTime leaseUntil;
@@ -44,7 +44,7 @@ namespace StudioRaming.WarudoAgentBridge
             "hierarchy.list", "object.get", "component.get", "render.globals",
             "character.expressions", "character.blendshapes", "character.pose.get", "character.pose.save", "character.ik.get",
             "graph.list", "graph.get", "node.fields",
-            "maintenance.cleanup",
+            "maintenance.cleanup", "pointer.state",
         };
 
         protected override void OnCreate()
@@ -74,6 +74,7 @@ namespace StudioRaming.WarudoAgentBridge
             stopped = true;
             Application.logMessageReceivedThreaded -= ReceiveLog;
             ReleaseCharacterOverrides();
+            DestroyPointer();
             PersistLease();
             try { AtomicWrite(Path.Combine(root, "state.json"), Status(true).ToString(Formatting.None)); } catch (Exception) { }
             base.OnDestroy();
@@ -94,6 +95,7 @@ namespace StudioRaming.WarudoAgentBridge
                 nextMaintenance = now + 1800f;
                 ScheduleMaintenance();
             }
+            PointerTick();
             if (busy || now < nextRequest) return;
             nextRequest = now + .05f;
             string path;
@@ -112,7 +114,7 @@ namespace StudioRaming.WarudoAgentBridge
                 protocol = Protocol, version = Version, features = Features, sessionId = session,
                 pid = System.Diagnostics.Process.GetCurrentProcess().Id, stopped = stopping,
                 utc = DateTime.UtcNow.ToString("o"), heartbeatEpoch = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                applicationFocused = Application.isFocused, runInBackground = Application.runInBackground, timeScale = Time.timeScale,
+                applicationFocused = Application.isFocused, runInBackground = Application.runInBackground, timeScale = Time.timeScale, pointerActive = PointerActive,
                 frame = Time.frameCount, deltaTime = Time.unscaledDeltaTime,
                 scene = Context.OpenedScene == null ? null : Context.OpenedScene.Name,
                 busy, activeRequest,
@@ -266,6 +268,7 @@ namespace StudioRaming.WarudoAgentBridge
                     if (DateTime.UtcNow < leaseUntil && leaseOwner != owner) throw new InvalidOperationException("LEASE_BUSY: the lease belongs to " + leaseOwner);
                     leaseUntil = DateTime.MinValue;
                     leaseOwner = null;
+                    if (PointerActive) ReleasePointer("lease released").Forget();
                     return Status();
                 case "runtime.logs":
                 {
@@ -346,6 +349,10 @@ namespace StudioRaming.WarudoAgentBridge
                     return RenderGlobals(p);
                 case "input.key":
                     return SendKey(p);
+                case "pointer.play":
+                case "pointer.release":
+                case "pointer.state":
+                    return await PointerOperation(op, p, owner);
                 case "maintenance.cleanup":
                     return RunMaintenance((bool?)p["dryRun"] ?? true);
                 default:
