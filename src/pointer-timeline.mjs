@@ -260,21 +260,27 @@ export function expandTimeline(plan, initial = {}, screen) {
 // over a usable one, and several usable matches need an index so the click is never a guess.
 export function resolveUiTarget(items, { id, label, labelMatch = 'contains', index } = {}, { truncated = false } = {}) {
   if ((id === undefined) === (label === undefined)) throw invalid('Pass exactly one of id or label.');
-  if (labelMatch !== 'exact' && labelMatch !== 'contains') throw invalid('labelMatch must be exact or contains.');
+  if (labelMatch !== 'exact' && labelMatch !== 'contains' && labelMatch !== 'auto') throw invalid('labelMatch must be exact, contains or auto.');
   if (id === undefined && (typeof label !== 'string' || !label.trim())) throw invalid('label must be a non-empty string.');
   if (index !== undefined && (!Number.isInteger(index) || index < 0)) throw invalid('index must be an integer >= 0.');
   const wanted = id === undefined ? label.trim().toLowerCase() : null;
-  const matches = items.filter((item) => {
-    if (id !== undefined) return item.id === id;
-    const text = String(item.label ?? '').trim().toLowerCase();
-    return labelMatch === 'exact' ? text === wanted : text.includes(wanted);
-  });
-  const what = id !== undefined ? `id ${id}` : `label ${labelMatch === 'exact' ? '=' : '~'} "${label}"`;
+  const textOf = (item) => String(item.label ?? '').trim().toLowerCase();
+  const isUsable = (item) => item.interactable && item.onScreen;
+  let matches;
+  if (id !== undefined) matches = items.filter((item) => item.id === id);
+  else if (labelMatch === 'exact') matches = items.filter((item) => textOf(item) === wanted);
+  else if (labelMatch === 'contains') matches = items.filter((item) => textOf(item).includes(wanted));
+  else {
+    // auto: an exact label wins as soon as one usable control has it; otherwise any control whose label contains the text.
+    const exact = items.filter((item) => textOf(item) === wanted);
+    matches = exact.some(isUsable) ? exact : items.filter((item) => textOf(item).includes(wanted));
+  }
+  const what = id !== undefined ? `id ${id}` : `label ${labelMatch === 'exact' ? '=' : labelMatch === 'auto' ? '=~' : '~'} "${label}"`;
   const brief = (item) => ({ id: item.id, path: item.path, label: item.label, interactable: item.interactable, onScreen: item.onScreen, rect: item.rect });
   if (!matches.length) {
     throw new BridgeError('UI_NOT_FOUND', `No visible UI element with ${what}.${truncated ? ' The list was truncated; narrow it with ui.list query.' : ''} Read warudo_ui_list to see what is on screen.`);
   }
-  const usable = matches.filter((item) => item.interactable && item.onScreen);
+  const usable = matches.filter(isUsable);
   if (!usable.length) {
     throw new BridgeError('UI_NOT_CLICKABLE', `${matches.length} element(s) match ${what}, but none can be clicked (disabled, or off screen).`, { candidates: matches.slice(0, 10).map(brief) });
   }

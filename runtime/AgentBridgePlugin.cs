@@ -44,7 +44,7 @@ namespace StudioRaming.WarudoAgentBridge
             "hierarchy.list", "object.get", "component.get", "render.globals",
             "character.expressions", "character.blendshapes", "character.pose.get", "character.pose.save", "character.ik.get",
             "graph.list", "graph.get", "node.fields",
-            "maintenance.cleanup", "pointer.state", "ui.list", "ui.at",
+            "maintenance.cleanup", "pointer.state", "ui.list", "ui.at", "ui.capture",
         };
 
         protected override void OnCreate()
@@ -357,6 +357,8 @@ namespace StudioRaming.WarudoAgentBridge
                 case "ui.at":
                 case "ui.set_text":
                     return UiOperation(op, p);
+                case "ui.capture":
+                    return await UiCapture(p);
                 case "maintenance.cleanup":
                     return RunMaintenance((bool?)p["dryRun"] ?? true);
                 default:

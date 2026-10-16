@@ -3,6 +3,7 @@ import process from 'node:process';
 import { request, responseError, readEvidencePng, readHeartbeat, evidencePngPath, defaultOwner, BridgeError, BridgeUnknownError } from './transport.mjs';
 import { captureOptionsUsed, validateCaptureArgs, CAPTURE_KEYS } from './capture-options.mjs';
 import { ImageStore } from './image-space.mjs';
+import { legendFrom, listParamsFor, resolveMark } from './ui-marks.mjs';
 import { buildClickPlan, buildPointerPlan, clickPoint, resolveUiTarget } from './pointer-timeline.mjs';
 import { TOOLS, TOOL_BY_NAME } from './tools.mjs';
 import { VERSION } from './version.mjs';
@@ -25,7 +26,8 @@ export const INSTRUCTIONS = [
 ].join(' ');
 
 const textContent = (value) => ({ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) });
-const isCapture = (name) => name === 'warudo_camera_capture' || name === 'warudo_screen_capture' || name === 'warudo_analysis_capture';
+const CAPTURE_TOOLS = new Set(['warudo_camera_capture', 'warudo_screen_capture', 'warudo_analysis_capture', 'warudo_ui_capture']);
+const isCapture = (name) => CAPTURE_TOOLS.has(name);
 // Capture tools return the PNG path at the top; a pointer gesture with capture=true returns it under "capture".
 const evidencePath = (name, data) => (isCapture(name) ? data && data.path : data && data.capture && data.capture.path);
 // The capture options a gesture forwards from the arguments it was called with.
@@ -49,6 +51,8 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
   let legacyVersion = null;
   // The last 32 images this server returned, with where each sits in the window (src/image-space.mjs).
   const images = new ImageStore();
+  // The numbered legend of the latest warudo_ui_capture, for warudo_ui_click mark=N.
+  let uiLegend = null;
 
   // idempotent: reads and absolute-value writes may be retried once if a reload interrupts them.
   async function operation(name, args, idempotent = false) {
@@ -96,11 +100,25 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
   // Finds the control with ui.list, then clicks the middle of its rectangle through the same pointer timeline.
   // expectObject makes the runtime stop with COVERED instead of clicking whatever is on top of it.
   async function uiClick(tool, args) {
-    const { id, label, labelMatch, index } = args;
-    if ((id === undefined) === (label === undefined)) throw new BridgeError('INVALID_ARGUMENT', 'Pass exactly one of id or label.');
-    const listed = await operation('ui.list', { ...(id !== undefined ? { id } : { query: label }), interactableOnly: false, limit: 500 }, true);
-    const target = resolveUiTarget(listed.items ?? [], { id, label, labelMatch, index }, { truncated: listed.truncated === true });
-    const [x, y] = clickPoint(target, listed.screen);
+    const { id, label, near, mark, labelMatch, index } = args;
+    if ([id, label, near, mark].filter((value) => value !== undefined).length !== 1) throw new BridgeError('INVALID_ARGUMENT', 'Pass exactly one of near, label, id or mark.');
+    let target;
+    let screen;
+    if (mark !== undefined) {
+      // The numbers belong to the latest ui_capture; list the same controls again and refuse when they are not the same.
+      const listed = uiLegend ? await operation('ui.list', listParamsFor(uiLegend), true) : null;
+      target = resolveMark(uiLegend, mark, listed);
+      if (!target.interactable || !target.onScreen) throw new BridgeError('UI_NOT_CLICKABLE', `Mark ${mark} (${target.label ?? target.path}) is disabled or off screen.`, { candidates: [{ id: target.id, path: target.path, label: target.label, interactable: target.interactable, onScreen: target.onScreen, rect: target.rect }] });
+      screen = listed.screen;
+    } else {
+      // near is the preferred way: the visible text, exact first, then contains.
+      const text = near ?? label;
+      const wanted = id === undefined ? { label: text, labelMatch: labelMatch ?? (near !== undefined ? 'auto' : 'contains') } : { id };
+      const listed = await operation('ui.list', { ...(id !== undefined ? { id } : { query: text }), interactableOnly: false, limit: 500 }, true);
+      target = resolveUiTarget(listed.items ?? [], { ...wanted, index }, { truncated: listed.truncated === true });
+      screen = listed.screen;
+    }
+    const [x, y] = clickPoint(target, screen);
     const plan = buildClickPlan({ x, y, button: args.button, count: args.count, modifiers: args.modifiers, holdFrames: args.holdFrames, settleFrames: args.settleFrames, capture: args.capture, ...captureArgs(args), expectObject: target.id });
     const result = await callRuntime(tool, plan);
     return { ...result, resolved: { id: target.id, path: target.path, label: target.label, point: [x, y] } };
@@ -145,6 +163,7 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
       else if (tool.local === 'uiClick') data = await uiClick(tool, callArgs);
       else data = await callRuntime(tool, tool.plan ? buildPointerPlan(tool.plan, callArgs) : callArgs);
       registerImage(name, data);
+      if (name === 'warudo_ui_capture') uiLegend = legendFrom(data) ?? uiLegend;
     } catch (error) {
       return { isError: true, content: [textContent(errorPayload(error))] };
     }

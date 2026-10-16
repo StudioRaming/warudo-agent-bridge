@@ -31,6 +31,7 @@ namespace StudioRaming.WarudoAgentBridge
             public bool OnScreen, Interactable;
             public string Path, Label;
             public bool LabelDone;
+            public string Kind;
         }
 
         object UiOperation(string op, JObject p)
@@ -51,15 +52,9 @@ namespace StudioRaming.WarudoAgentBridge
             int? onlyId = (int?)p["id"];
             int offset = Math.Max(0, (int?)p["offset"] ?? 0), limit = Mathf.Clamp((int?)p["limit"] ?? 100, 1, 500);
             int width = Screen.width, height = Screen.height;
+            int[] region = p["region"] == null || p["region"].Type == JTokenType.Null ? null : CaptureOptions.ParseRegion(p["region"], "region");
 
-            IEnumerable<UiElement> elements = CollectUiElements(width, height);
-            if (onlyId.HasValue) elements = elements.Where(element => element.Target.GetInstanceID() == onlyId.Value);
-            if (interactableOnly) elements = elements.Where(element => element.Interactable);
-            if (query.Length > 0)
-                elements = elements.Where(element =>
-                    (UiLabelOf(element) ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    UiPathOf(element).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0);
-            UiElement[] matches = elements.ToArray();
+            UiElement[] matches = FilterUiElements(width, height, query, interactableOnly, onlyId, region).ToArray();
             return new
             {
                 screen = new { width, height },
@@ -71,6 +66,52 @@ namespace StudioRaming.WarudoAgentBridge
             };
         }
 
+        // The elements ui.list and ui.capture agree on: the same filters, in the same (frontmost canvas first) order.
+        // region [x, y, w, h] keeps the elements whose rectangle overlaps it.
+        IEnumerable<UiElement> FilterUiElements(int width, int height, string query, bool interactableOnly, int? onlyId, int[] region)
+        {
+            IEnumerable<UiElement> elements = CollectUiElements(width, height);
+            if (onlyId.HasValue) elements = elements.Where(element => element.Target.GetInstanceID() == onlyId.Value);
+            if (interactableOnly) elements = elements.Where(element => element.Interactable);
+            if (region != null)
+            {
+                var area = new Rect(region[0], region[1], region[2], region[3]);
+                elements = elements.Where(element => element.Rect.Overlaps(area));
+            }
+            if (query.Length > 0)
+                elements = elements.Where(element =>
+                    (UiLabelOf(element) ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    UiPathOf(element).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0);
+            return elements;
+        }
+
+        // button, toggle, slider, input, scroll or other: from the components first (InputField > Toggle > Slider/Scrollbar > ScrollRect > Button),
+        // then from the handlers (a drag-only control is a slider, a wheel handler a scroll area, a click handler a button).
+        static string UiKindOf(UiElement element)
+        {
+            if (element.Kind != null) return element.Kind;
+            bool input = false, toggle = false, slider = false, scroll = false, button = false, scrollHandler = false, drag = false, click = false;
+            foreach (Component component in element.Target.GetComponents<Component>())
+            {
+                if (component == null) continue;
+                for (Type type = component.GetType(); type != null && type != typeof(MonoBehaviour); type = type.BaseType)
+                {
+                    string name = type.Name;
+                    if (name == "InputField" || name == "TMP_InputField") input = true;
+                    else if (name == "Toggle") toggle = true;
+                    else if (name == "Slider" || name == "Scrollbar") slider = true;
+                    else if (name == "ScrollRect") scroll = true;
+                    else if (name == "Button") button = true;
+                }
+                if (component is IScrollHandler) scrollHandler = true;
+                if (component is IDragHandler) drag = true;
+                if (component is IPointerClickHandler) click = true;
+            }
+            element.Kind = input ? "input" : toggle ? "toggle" : slider ? "slider" : scroll ? "scroll" : button ? "button"
+                : scrollHandler ? "scroll" : drag && !click ? "slider" : click ? "button" : "other";
+            return element.Kind;
+        }
+
         object DescribeUiElement(UiElement element)
         {
             Rect rect = element.Rect;
@@ -78,6 +119,7 @@ namespace StudioRaming.WarudoAgentBridge
             {
                 id = element.Target.GetInstanceID(),
                 path = UiPathOf(element),
+                kind = UiKindOf(element),
                 handlers = element.Handlers.Distinct().ToArray(),
                 label = UiLabelOf(element),
                 rect = new[] { R(rect.x), R(rect.y), R(rect.width), R(rect.height) },
