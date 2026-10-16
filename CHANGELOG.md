@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Character photos
+- `warudo_character_shot`: a picture of a Character asset from an orbit around it (yaw relative to the character's facing, named views, framings full, upper, bust and face, up to 6 views in one sheet, background scene, flat or transparent). A temporary camera copies the main camera's rendering and is placed on the orbit, so the user's camera never moves and the character is not lost to a free camera. Each view reports the character's screen bounds, coverage and occlusion (with the names of what hides it), and retries once when the character covers under 10 % or is more than half hidden.
+- A Character asset in the scene is never reported as missing: `CHARACTER_NOT_LOADED`, `CHARACTER_DISABLED` and `CHARACTER_NO_RENDERERS` say why it cannot be shot; `NO_CHARACTER_ASSET` lists the asset types present.
+- The MCP instructions and the `warudo_camera_capture` and `warudo_screen_capture` descriptions point agents to it. The runtime reports the `character-shot` feature.
+
 ### Virtual pointer (Tools: 78)
 - Agents can click, double click, drag, hover and scroll in WARUDO's main window without bringing it to the front and without any OS input: `warudo_pointer_click`, `warudo_pointer_drag`, `warudo_pointer_move`, `warudo_pointer_button`, `warudo_pointer_wheel`, `warudo_pointer_release`, `warudo_pointer_state`, `warudo_key_virtual`.
 - `warudo_ui_list` (what reacts to the pointer, with window-pixel rectangles), `warudo_ui_at` (what is under a point), `warudo_ui_click` (by id or label; a covered control fails with `COVERED` instead of clicking what is on top) and `warudo_ui_set_text` (InputField and TMP_InputField).

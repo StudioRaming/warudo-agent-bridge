@@ -2,6 +2,7 @@ import readline from 'node:readline';
 import process from 'node:process';
 import { request, responseError, readEvidencePng, readHeartbeat, defaultOwner, BridgeError, BridgeUnknownError } from './transport.mjs';
 import { buildClickPlan, buildPointerPlan, clickPoint, resolveUiTarget } from './pointer-timeline.mjs';
+import { validateRenderArgs } from './render-args.mjs';
 import { TOOLS, TOOL_BY_NAME } from './tools.mjs';
 import { VERSION } from './version.mjs';
 
@@ -19,11 +20,12 @@ export const INSTRUCTIONS = [
   'Writes need a short lease; this server takes it automatically when no other agent holds it. Release it with warudo_lease_release when you are done.',
   'Live changes are not saved into the scene file until warudo_scene_save_as. Mutating tools return before/after values so you can restore them.',
   'An UNKNOWN error means the request may have run: read the state back instead of retrying. NOT_EXECUTED means it never ran and is safe to retry.',
+  'To photograph a character use warudo_character_shot: it orbits around the character and never uses the free camera. A Character asset in the asset list means there is a character; if it is not visible the tool says why.',
   'To pose a character from a reference image: warudo_character_pose_get, then warudo_character_pose_set with muscles, capture with warudo_camera_capture, compare, adjust; save with warudo_character_pose_save.',
 ].join(' ');
 
 const textContent = (value) => ({ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) });
-const isCapture = (name) => name === 'warudo_camera_capture' || name === 'warudo_screen_capture' || name === 'warudo_analysis_capture';
+const isCapture = (name) => name === 'warudo_camera_capture' || name === 'warudo_screen_capture' || name === 'warudo_analysis_capture' || name === 'warudo_character_shot';
 // Capture tools return the PNG path at the top; a pointer gesture with capture=true returns it under "capture".
 const evidencePath = (name, data) => (isCapture(name) ? data && data.path : data && data.capture && data.capture.path);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -117,6 +119,7 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
     const tool = TOOL_BY_NAME.get(name);
     let data;
     try {
+      validateRenderArgs(name, args);
       if (tool.requires) await requireFeature(tool.requires);
       if (tool.local === 'waitLoaded') data = await waitLoaded(args);
       else if (tool.local === 'uiClick') data = await uiClick(tool, args);

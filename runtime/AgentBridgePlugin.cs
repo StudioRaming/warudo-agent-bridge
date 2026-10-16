@@ -24,7 +24,7 @@ namespace StudioRaming.WarudoAgentBridge
     {
         const string Version = "0.2.0";
         const int Protocol = 2;
-        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings", "pointer" };
+        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings", "pointer", "character-shot" };
 
         string home, root, session, leaseOwner, activeRequest;
         DateTime leaseUntil;
@@ -40,7 +40,7 @@ namespace StudioRaming.WarudoAgentBridge
             "status", "lease.status", "runtime.logs",
             "scene.list", "scene.get", "scene.snapshot", "scene.snapshots",
             "asset.types", "asset.fields", "asset.list", "asset.get", "resource.list", "plugin.list", "plugin.fields",
-            "camera.get", "camera.capture", "screen.capture", "analysis.capture",
+            "camera.get", "camera.capture", "screen.capture", "analysis.capture", "character.shot",
             "hierarchy.list", "object.get", "component.get", "render.globals",
             "character.expressions", "character.blendshapes", "character.pose.get", "character.pose.save", "character.ik.get",
             "graph.list", "graph.get", "node.fields",
@@ -337,6 +337,8 @@ namespace StudioRaming.WarudoAgentBridge
                     return await ScreenOperation(op, p);
                 case "analysis.capture":
                     return await AnalysisCapture(p);
+                case "character.shot":
+                    return CharacterShot(p);
                 case "hierarchy.list":
                 case "object.get":
                 case "object.transform":

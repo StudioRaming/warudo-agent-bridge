@@ -373,6 +373,7 @@ Pose tools use Unity humanoid terms, so they fit any humanoid avatar or VRM.
 - Joints stay inside the avatar's range. When an aim asks for more, the reply lists it under `limited` so the agent can ease that aim.
 - The reply comes once the character shows the pose (`shown`), so a capture right after is correct.
 - `warudo_analysis_capture` renders the body without materials or background, colored by body part, from several views at once, and reports hand contacts, how high each body part is above the floor, and where every joint lands in the camera frame. Agents use it to check a pose against a reference image instead of guessing from a shaded screenshot.
+- `warudo_character_shot` takes a picture of the character from an orbit around it (named views relative to its facing, framings from full body to face, one contact sheet of up to 6), with a temporary camera that copies the main camera's rendering, so the user's camera never moves. Every view reports where the character is in the frame, how much of the frame it covers and how much of it is hidden behind something else. A Character asset in the scene never gives "no character": the error says whether it is not loaded, disabled or has nothing to render. Use it instead of `warudo_camera_capture` for any picture of the character.
 - `warudo_character_pose_save` writes the pose as a Unity humanoid `.anim`, into WARUDO's own animation list or to any folder (for example a Unity project).
 - `warudo_character_pose_clear` puts the previous idle animation back.
 
