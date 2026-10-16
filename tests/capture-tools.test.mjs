@@ -259,3 +259,29 @@ test('diff and sequence replies carry the image, probe stays text', async () => 
     await rt.stop();
   }
 });
+
+test('gesture tools offer markPointer (default on) and captureBefore, and the plan carries them to the runtime', async () => {
+  for (const name of ['warudo_pointer_click', 'warudo_pointer_drag', 'warudo_pointer_move', 'warudo_pointer_button', 'warudo_pointer_wheel', 'warudo_ui_click']) {
+    const { properties } = byName[name].inputSchema;
+    assert.equal(properties.markPointer.default, true, name);
+    assert.equal(properties.captureBefore.type, 'boolean', name);
+    assert.ok(properties.maxSize && properties.region && properties.grid, name);
+    assert.equal(byName[name].requiresCapture, true, name);
+  }
+  const plan = buildClickPlan({ x: 1, y: 2, captureBefore: true, markPointer: false, maxSize: 900 });
+  assert.deepEqual([plan.capture, plan.captureBefore, plan.markPointer, plan.maxSize], [true, true, false, 900]);
+  const rt = await runtimeWith((op) => (op === 'pointer.play' ? { gesture: 'drag' } : {}));
+  try {
+    const server = createServer({ home: rt.home, timeoutMs: 3000 });
+    const reply = await call(server, 1, 'warudo_pointer_drag', { path: [[10, 10], [200, 10]], captureBefore: true, grid: true });
+    assert.equal(reply.result.isError, false, reply.result.content[0].text);
+    const sent = rt.seen.find((request) => request.operation === 'pointer.play').params;
+    assert.deepEqual([sent.capture, sent.captureBefore, sent.grid], [true, true, true]);
+    const bad = await call(server, 2, 'warudo_pointer_click', { x: 1, y: 1, markPointer: 'no', capture: true });
+    assert.equal(payload(bad).code, 'INVALID_ARGUMENT');
+    const screenOnly = await call(server, 3, 'warudo_screen_capture', { captureBefore: true });
+    assert.equal(payload(screenOnly).code, 'INVALID_ARGUMENT');
+  } finally {
+    await rt.stop();
+  }
+});

@@ -122,9 +122,10 @@ namespace StudioRaming.WarudoAgentBridge
             PointerFrame[] rows = PointerTimeline.Build(p, initial, screenWidth, screenHeight, out post);
             bool keep = ((bool?)p["keep"] ?? false) || post.Buttons != 0 || post.Keys.Length != 0;
             int settle = Mathf.Clamp((int?)p["settleFrames"] ?? 2, 0, 60);
-            bool capture = (bool?)p["capture"] ?? false;
+            bool capture = ((bool?)p["capture"] ?? false) || ((bool?)p["captureBefore"] ?? false);
             // A bad capture option or an unframeable target must fail before the gesture runs, not after it clicked.
-            if (capture) ResolveCrop(CaptureOptions.Parse(p), screenWidth, screenHeight);
+            CaptureOptions captureOptions = capture ? CaptureOptions.Parse(p) : null;
+            if (capture) ResolveCrop(captureOptions, screenWidth, screenHeight);
             int? expectId = (int?)p["expectObject"];
             int pressRow = Array.FindIndex(rows, row => row.Down != 0);
             int releaseRow = Array.FindLastIndex(rows, row => row.Up != 0);
@@ -143,6 +144,9 @@ namespace StudioRaming.WarudoAgentBridge
             float started = Time.realtimeSinceStartup;
             try
             {
+                // captureBefore: the frame as it is before anything moves, for the BEFORE / AFTER sheet.
+                GrabbedFrame? beforeFrame = null;
+                if (captureOptions != null && captureOptions.Before) beforeFrame = await GrabFrame(OptionalTimeout(p));
                 driver.Activate();
                 int startFrame = Time.frameCount + 1;
                 driver.Arm(rows, initial, post, startFrame);
@@ -178,7 +182,7 @@ namespace StudioRaming.WarudoAgentBridge
                 }
 
                 // The capture is taken while the virtual pointer is still parked, so hover and pressed looks are in it.
-                object captured = capture ? await CaptureScreen(p) : null;
+                object captured = capture ? await CaptureGesture(p, captureOptions, GestureMarks.From(rows, pressRow, releaseRow, (string)p["gesture"]), beforeFrame) : null;
                 completed = true;
                 EventSystem current = EventSystem.current;
                 GameObject selected = current == null ? null : current.currentSelectedGameObject;
