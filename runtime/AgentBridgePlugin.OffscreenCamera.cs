@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
-using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.Rendering.Universal;
 
 namespace StudioRaming.WarudoAgentBridge
@@ -14,14 +13,13 @@ namespace StudioRaming.WarudoAgentBridge
     //
     // Copied from the source camera: Camera.CopyFrom (projection, clear flags, background, culling mask, clip planes,
     // HDR and MSAA flags), the URP additional camera data (post-processing, volume mask, antialiasing, depth and color
-    // texture requests, shadows) or the Built-in PostProcessLayer. Not copied: components WARUDO adds for its own
+    // texture requests, shadows). Not copied: the Built-in PostProcessLayer and components WARUDO adds for its own
     // look (Beautify, HBAO), so a frame can differ slightly from the screen.
     sealed class OffscreenCamera : IDisposable
     {
         readonly GameObject host;
         readonly Camera source;
         readonly UniversalAdditionalCameraData urp;
-        readonly PostProcessLayer layer;
         readonly bool sourcePostProcessing;
         public readonly Camera Camera;
         public readonly List<string> Notes = new List<string>();
@@ -55,24 +53,9 @@ namespace StudioRaming.WarudoAgentBridge
             }
             else
             {
-                PostProcessLayer from = source.GetComponent<PostProcessLayer>();
-                if (from != null && from.enabled)
-                {
-                    try
-                    {
-                        layer = host.AddComponent<PostProcessLayer>();
-                        layer.volumeLayer = from.volumeLayer;
-                        layer.volumeTrigger = host.transform;
-                        layer.antialiasingMode = from.antialiasingMode;
-                        layer.Init(Resources.Load<PostProcessResources>("PostProcessResources"));
-                        sourcePostProcessing = true;
-                    }
-                    catch (Exception e)
-                    {
-                        layer = null;
-                        Notes.Add("post-processing not copied: " + e.Message);
-                    }
-                }
+                // WARUDO's Playground compiler does not reference Unity.Postprocessing.Runtime, so the Built-in
+                // PostProcessLayer cannot be copied here; Built-in frames come out without post-processing.
+                Notes.Add("post-processing not copied (Built-in pipeline)");
             }
         }
 
@@ -87,7 +70,6 @@ namespace StudioRaming.WarudoAgentBridge
         {
             on = on && sourcePostProcessing;
             if (urp != null) urp.renderPostProcessing = on;
-            if (layer != null) layer.enabled = on;
         }
 
         public Color Background { get { return source.backgroundColor; } }
