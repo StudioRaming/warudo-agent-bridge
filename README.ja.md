@@ -371,13 +371,52 @@ AI クライアント ──stdio──> MCP サーバー (Node) ──ファイ
 - 関節はアバターの可動範囲を超えません。エイムが範囲を超えたら返答の `limited` に書き込むので、エージェントはそのエイムを減らせます。
 - キャラクターにポーズが実際に見えた後に返答します(`shown`)。すぐに続いて撮るキャプチャが正確です。
 - `warudo_analysis_capture` はマテリアルと背景なしで、部位ごとの色で体を複数の方向から一度にレンダーして、手の接触、部位ごとの床高さ、カメラ画面での各関節の位置を教えます。エージェントはシェーディングされたスクリーンショットを推測する代わりに、これでリファレンス画像とポーズを合わせます。
+- `warudo_character_shot` はキャラクターの周りの軌道からキャラクターの写真を撮ります（キャラクターの向きを基準にした名前付きの視点、全身から顔までのフレーミング、最大6枚のコンタクトシート）。メインカメラのレンダリングをそのまま真似する一時カメラを使うので、ユーザーのカメラは動きません。視点ごとに、キャラクターが画面のどこにいるか、画面をどれだけ占めているか、ほかの物にどれだけ隠れているかを報告します。シーンに Character アセットがあるのに「キャラクターなし」になることはありません。エラーは、ロードされていないのか、無効なのか、レンダリングするものがないのかを伝えます。キャラクターの写真は `warudo_camera_capture` の代わりにこれで撮ります。
+- `warudo_render_pass` は動作中のレンダラーの平坦な診断パス（parts, albedo, texture, alpha, normals, depth, uv, lighting, overlap）を複数の視点から描いて、ラベル付きの画像1枚で返します。凡例にはマテリアルスロットごとに、レンダラーのパス、スロット、マテリアル、シェーダー、カットアウトモード、実際に使われているテクスチャ（MaterialPropertyBlock のプラグインによる色変更がマテリアルより優先されます）、タイリング、カメラフレームの範囲が入ります。WARUDO では何も変わりません。`passes x views` は最大12パネルで、`texture` には `textureProperty` が必要です。
+- `warudo_render_isolate` は選んだレンダラーの実際の見た目を見せます（`warudo_hierarchy_list` の `objectIds`、またはパスの一部の文字列 `include`）。`highlight` はフレームを残してほかを暗くし、`only` はそれだけをニュートラル、チェッカー、または透明の背景に表示します。パーツごとに画面上の範囲、見えている割合、平均 sRGB 色を返します。メインカメラを真似する一時カメラを使い、選んだレンダラーは数回の同期レンダリングのあいだ未使用のレイヤーに移され、同じ呼び出しの中で元に戻ります。
 - `warudo_character_pose_save` はポーズをUnity ヒューマノイド `.anim` で保存します。WARUDO アニメーションリストに入れたり、好きなフォルダ（例：Unity プロジェクト）に書き込みます。
 - `warudo_character_pose_clear` は元の待機アニメーションに戻します。
+
+### 仮想ポインター（フォーカス不要）
+
+エージェントは、WARUDO がバックグラウンドにあっても WARUDO のメインウィンドウの中でクリック、ダブルクリック、ドラッグ、ホバー、スクロールができます。ブリッジがフレーム単位の短いマウスのタイムラインを Unity の UI 入力モジュールに再生し、再生しているあいだ UI にウィンドウがフォーカスを持っていると伝えます。Windows のマウス・キーボードイベントは送らず、WARUDO を前面に出さず、実際のマウスも動かしません。
+
+- **届く範囲：** メインウィンドウの UI（UGUI：ボタン、スライダー、トグル、スクロール領域、パネル）と、下の契約に従うプラグイン。
+- **届かない範囲：** WARUDO のカメラ（実際のマウスを読むので、カメラツールを使ってください）、WARUDO エディタのウィンドウ（別のウィンドウ）、`Input.mousePosition` や `Input.GetKey` を直接読むプラグイン。
+- **典型的な使い方：** `warudo_ui_list`（クリックできるものと矩形の座標）→ ラベルで `warudo_ui_click`、または1点に `warudo_pointer_click` / `warudo_pointer_drag` / `warudo_pointer_wheel`。`capture: true` はポインターを置いたまま撮ったスクリーンショットを返します。`warudo_ui_at` は1点を何が覆っているかを示し、覆われたコントロールを狙ったクリックは、上にあるものを押す代わりに `COVERED` で止まります。`warudo_ui_set_text` は入力フィールドを埋めます（入力した文字は送れないためです）。`warudo_pointer_state` は押されているものを示し、`warudo_pointer_release` はすべてを終わらせます。
+- **安全：** 1つのジェスチャーは最大600フレーム、64点です。押したままのボタン（複数回の呼び出しにわたるドラッグ）や置いたままのポインターは、離したとき、書き込みの lease が終わったとき、または使われないまま `pointer.idleReleaseMs` が過ぎたときに終わります。再生中に WARUDO の中を自分でクリックすると、ジェスチャーは `USER_INPUT` で止まり、実際のマウスはまたユーザーのものになります。`pointer.enabled: false` ですべてオフにできます。
+- **このバージョンのランタイムが必要です。** 古いランタイムがインストールされていると `RUNTIME_OUTDATED` で返答します。再インストールして、WARUDO に Playground を再コンパイルさせてください。
+
+**プラグインの契約（WARUDO プラグインに仮想ポインターを見せるには）：**
+
+```csharp
+var module = EventSystem.current?.currentInputModule;
+var input = module?.input;                        // a BaseInput; the bridge swaps it while a gesture plays
+bool virtualInput = module?.inputOverride != null; // treat as focused: do not require Application.isFocused
+// Mouse: input.mousePosition (bottom-left origin), input.GetMouseButton/Down/Up(0..2), input.mouseScrollDelta. Not UnityEngine.Input.
+// Keys and modifiers: input has public bool GetKey/GetKeyDown/GetKeyUp(KeyCode) when virtual; find them by name (reflection or dynamic).
+// Otherwise (inputOverride == null) read the real UnityEngine.Input as before.
+```
+
+### 読みやすいキャプチャ
+
+スクリーンショットはエージェントが見るものなので、ツールごとに1種類の情報を見分けやすくしています。画像ツールはすべて、PNG、数値のテキスト、そしてマッピング（画像がウィンドウのどの領域を表し、どう縮小されたか）を持つ `imageId` を返します。
+
+- `warudo_screen_capture`：ウィンドウ全体を `maxSize`（デフォルト1600）に合わせます。`region` [x, y, w, h] または `around` { objectId | path }（プラグインのオーバーレイパネルを含む UI オブジェクト、またはレンダラー）は、まず元の解像度で切り抜くので、小さな文字も読めます。`grid` はウィンドウのピクセル単位でラベルが付いた座標グリッドを重ねて描きます。
+- `warudo_ui_capture`：`warudo_ui_list` が返すすべてのコントロールの上に番号付きの枠を描いた同じスクリーンショットです。種類（button, toggle, slider, input, scroll）ごとに色が違い、凡例がテキストで付きます。続けて `warudo_ui_click` は `mark`（番号。コントロールが変わっていれば `MARK_STALE` で拒否）または `near`（見えている文字。完全一致が先、次に部分一致）を受け取れます。
+- ジェスチャーキャプチャ（ポインターツールや `warudo_ui_click` の `capture: true`）：画像にポインターが描かれます（押下、離す、ドラッグの軌跡、`markPointer`）。`captureBefore: true` は BEFORE と AFTER をPNG1枚に並べて返し、AFTER には変わった領域を枠で示し、差分の数値を付けます。
+- `warudo_screen_diff`：今のウィンドウを以前のキャプチャ（`baseline` = キャプチャツールが返したパス）と比べます。変わっていないピクセルはグレー、変わったピクセルは色で表示され、枠に番号が付き、枠ごとに前後の平均色が出ます。
+- `warudo_screen_probe`：テキストのみ返します。点や領域の平均、中央値、HSV、輝度、最小・最大 RGB で、画像からピクセルを読み取らなくても色を比べられます。
+- `warudo_screen_sequence`：レンダリングされたKフレームごとに1枚、2〜16フレームを番号付きのコンタクトシート1枚で返し、各フレームが直前のフレームからどれだけ変わったかも伝えます（ホバー、アニメーション、ちらつきの確認）。
+- `warudo_ui_language`：WARUDO のプラグインが読む言語（`en`, `ja`, `ko`, `zh_CN` など WARUDO が文字列を持つコード）を切り替えるので、WARUDO の設定を開かなくてもプラグインのメニューを言語ごとにキャプチャできます。ディスクには何も保存しません。`restore: true` は最初に変える前の言語に戻します。書き込みの lease が終わったとき、`warudo_pointer_release` を呼んだとき、ブリッジが止まったときは、ブリッジが自動で戻します（その間に WARUDO で別の言語を自分で選んだ場合は除く）。シーンの読み込み中は `SCENE_LOADING` で拒否します。機能 `ui-language`。
+- **見えている場所をそのままクリック。** ポインターツール、`warudo_ui_at`、またはキャプチャツールの `region`/`points` に `space: "image"`（必要なら `imageId` も。デフォルトはこの MCP サーバーの最新の画像で、直近32枚を保持）を渡すと、x/y は受け取った画像のピクセルになります。サーバーがウィンドウのピクセルに変換します。画像の外の点、前後シートの AFTER パネルの外の点、コンタクトシート上の点は拒否されます。
+- **このバージョンのランタイムが必要です**（機能 `capture-tools`）。`npm run check:pixels` は UnityEngine のスタブを使った通常の .NET 上でピクセル計算（切り抜き、縮小、差分の枠、色の統計）を実行します。`npm run check:runtime` と同じ .NET SDK と WARUDO のファイルが必要です。
 
 ### 設定
 
 `%USERPROFILE%\.warudo-agent-bridge\config.json` ([config.example.json](config.example.json) から作られます)：
 
+- `pointer`：`enabled`（デフォルト `true`）は仮想ポインターと `warudo_ui_set_text` のオン・オフです。`idleReleaseMs`（デフォルト15000、1000..600000）は、置いたままのポインターや押したままのボタンが次の呼び出しを待ってから離されるまでの時間です。
 - `componentCall.allow`：エージェントが呼んでもいいUnity コンポーネントメソッド。`{"typePrefix": "My.Namespace.", "methods": ["Refresh"]}` という形式で書きます。デフォルトは空なので`warudo_component_call` はオフです。
 - `retention`：返答、キャプチャ、スナップショット、ポーズプレビューを `warudo_maintenance_cleanup` が削除するまで保持する期間。
 

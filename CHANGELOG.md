@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### UI language switch (Tools: 86)
+- `warudo_ui_language` sets the language WARUDO plugins read (`LocalizationManager.SetActiveLanguage`), so plugin menus can be captured in English and Japanese without opening WARUDO's settings. It returns `previous` and `original` (the language before the first change); `restore: true` puts `original` back; an unknown code is refused with the list of codes WARUDO has strings for; it is refused with `SCENE_LOADING` while a scene loads.
+- Nothing is saved: WARUDO's own settings write `CorePlugin.Language` (plugin data), which this tool does not touch, so a WARUDO restart starts in the saved language again. The runtime restores `original` itself when the write lease ends, on `warudo_pointer_release`, and when the bridge stops or reloads (`language-state.json` covers a reload that skipped the stop), unless the user picked another language meanwhile.
+- The runtime reports the `ui-language` feature. `npm run check:language` runs the restore bookkeeping under plain .NET (it only needs a .NET SDK).
+
 ### Captures that are easy to read (Tools: 82)
 - `warudo_screen_capture` gains `region` / `around` + `padding` (crop at full resolution, then fit), `maxSize` (default 1600, 256..4096; the image is never enlarged) and `grid` / `gridStep` (coordinate grid labeled in window pixels). The reply returns the crop used, an image mapping and an `imageId`.
 - New: `warudo_ui_capture` (numbered, kind-colored boxes over every `warudo_ui_list` control, legend as text), `warudo_screen_diff` (greyed unchanged pixels, numbered boxes with mean color before/after, `baseline` confined to the evidence folder), `warudo_screen_probe` (mean, median, HSV, luminance, min, max at points and regions, text only) and `warudo_screen_sequence` (contact sheet with per-frame changed fraction).
