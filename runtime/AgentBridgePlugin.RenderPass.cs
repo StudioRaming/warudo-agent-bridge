@@ -65,7 +65,8 @@ namespace StudioRaming.WarudoAgentBridge
                     if (width < 1 || height < 1) throw new InvalidOperationException("texture has no size");
                     int longest = Math.Max(width, height);
                     if (longest > PassTextureSide) { width = Math.Max(1, width * PassTextureSide / longest); height = Math.Max(1, height * PassTextureSide / longest); }
-                    bool srgb = texture.isDataSRGB;
+                    // Texture.isDataSRGB is missing from the UnityEngine that WARUDO's Playground compiles against.
+                    bool srgb = UnityEngine.Experimental.Rendering.GraphicsFormatUtility.IsSRGBFormat(texture.graphicsFormat);
                     RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, srgb ? RenderTextureReadWrite.sRGB : RenderTextureReadWrite.Linear);
                     RenderTexture previous = RenderTexture.active;
                     Texture2D readback = null;
