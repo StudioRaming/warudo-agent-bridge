@@ -410,14 +410,98 @@ AI 클라이언트 ──stdio──> MCP 서버 (Node) ──파일──> WARU
 - `warudo_analysis_capture`는 재질과 배경 없이 부위별 색으로 몸을 여러 방향에서 한 번에 렌더하고,
   손의 접촉, 부위별 바닥 높이, 카메라 화면에서 각 관절의 위치를 알려 줍니다. 에이전트는 셰이딩된
   스크린샷을 짐작하는 대신 이것으로 레퍼런스 이미지와 포즈를 맞춰 봅니다.
+- `warudo_character_shot`은 캐릭터 둘레의 궤도에서 캐릭터 사진을 찍습니다(캐릭터가 향한 방향 기준의
+  이름 붙은 시점, 전신부터 얼굴까지의 프레이밍, 최대 6장의 컨택트 시트). 메인 카메라의 렌더링을 그대로
+  따라 하는 임시 카메라를 쓰므로 사용자의 카메라는 움직이지 않습니다. 시점마다 캐릭터가 화면 어디에
+  있는지, 화면을 얼마나 차지하는지, 다른 물체에 얼마나 가려졌는지를 알려 줍니다. 씬에 Character
+  에셋이 있는데 "캐릭터 없음"이 나오는 일은 없습니다. 오류는 로드되지 않았는지, 비활성인지, 렌더할
+  것이 없는지를 알려 줍니다. 캐릭터 사진은 `warudo_camera_capture` 대신 이것으로 찍습니다.
+- `warudo_render_pass`는 살아 있는 렌더러의 평면 진단 패스(parts, albedo, texture, alpha, normals,
+  depth, uv, lighting, overlap)를 여러 시점에서 그려 라벨이 붙은 이미지 한 장으로 줍니다. 범례에는
+  재질 슬롯마다 렌더러 경로, 슬롯, 재질, 셰이더, 컷아웃 모드, 실제로 쓰는 텍스처(MaterialPropertyBlock의
+  플러그인 색 변경이 재질보다 우선), 타일링, 카메라 프레임 경계가 들어 있습니다. WARUDO에서는 아무것도
+  바뀌지 않습니다. `passes x views`는 패널 12개까지이고, `texture`에는 `textureProperty`가 필요합니다.
+- `warudo_render_isolate`는 고른 렌더러의 실제 모습을 보여 줍니다(`warudo_hierarchy_list`의
+  `objectIds` 또는 경로 일부 문자열 `include`). `highlight`는 프레임을 두고 나머지를 어둡게 하고,
+  `only`는 그 렌더러만 중립, 체커 또는 투명 배경 위에 보여 줍니다. 부위마다 화면 경계, 보이는 비율,
+  평균 sRGB 색을 돌려줍니다. 메인 카메라를 따라 하는 임시 카메라를 쓰고, 고른 렌더러는 동기 렌더 몇
+  번 동안 안 쓰는 레이어로 옮겨졌다가 같은 호출 안에서 원래대로 돌아옵니다.
 - `warudo_character_pose_save`는 포즈를 Unity 휴머노이드 `.anim`으로 저장합니다. WARUDO 애니메이션
   목록에 넣거나 원하는 폴더(예: 유니티 프로젝트)에 씁니다.
 - `warudo_character_pose_clear`는 원래 대기 애니메이션으로 돌려 놓습니다.
+
+### 가상 포인터 (포커스 필요 없음)
+
+에이전트는 WARUDO가 백그라운드에 있어도 WARUDO 메인 창 안에서 클릭, 더블 클릭, 드래그, 호버, 스크롤을
+할 수 있습니다. 브리지가 프레임 단위의 짧은 마우스 타임라인을 Unity의 UI 입력 모듈에 재생하고, 재생하는
+동안 UI에 창이 포커스를 가졌다고 알려 줍니다. Windows 마우스·키보드 이벤트는 보내지 않고, WARUDO를
+앞으로 가져오지 않으며, 실제 마우스도 움직이지 않습니다.
+
+- **닿는 곳:** 메인 창 UI(UGUI: 버튼, 슬라이더, 토글, 스크롤 영역, 패널)와 아래 계약을 따르는 플러그인.
+- **닿지 않는 곳:** WARUDO 카메라(실제 마우스를 읽으므로 카메라 도구를 쓰세요), WARUDO 에디터 창(다른
+  창), `Input.mousePosition`이나 `Input.GetKey`를 직접 읽는 플러그인.
+- **일반적인 사용:** `warudo_ui_list`(클릭할 수 있는 것과 사각형 좌표) → 라벨로 `warudo_ui_click`, 또는
+  한 점에 `warudo_pointer_click` / `warudo_pointer_drag` / `warudo_pointer_wheel`. `capture: true`는
+  포인터가 그대로 있는 상태에서 찍은 스크린샷을 돌려줍니다. `warudo_ui_at`은 한 점을 무엇이 덮고 있는지
+  보여 주며, 덮인 컨트롤을 겨냥한 클릭은 위에 있는 것을 누르는 대신 `COVERED`로 멈춥니다.
+  `warudo_ui_set_text`는 입력 필드를 채웁니다(타이핑한 글자는 보낼 수 없기 때문입니다).
+  `warudo_pointer_state`는 눌린 것을 보여 주고, `warudo_pointer_release`는 모든 것을 끝냅니다.
+- **안전:** 제스처 하나는 최대 600프레임, 64점입니다. 누른 채 둔 버튼(여러 호출에 걸친 드래그)이나 세워 둔
+  포인터는 놓을 때, 쓰기 lease가 끝날 때, 또는 쓰지 않은 채 `pointer.idleReleaseMs`가 지나면 끝납니다.
+  재생 중에 WARUDO 안을 직접 클릭하면 제스처가 `USER_INPUT`으로 멈추고 실제 마우스는 다시 사용자의
+  것이 됩니다. `pointer.enabled: false`로 전부 끌 수 있습니다.
+- **이 버전의 런타임이 필요합니다.** 오래된 런타임이 설치되어 있으면 `RUNTIME_OUTDATED`로 답합니다.
+  다시 설치하고 WARUDO가 Playground를 다시 컴파일하게 하세요.
+
+**플러그인 계약 (WARUDO 플러그인이 가상 포인터를 보게 하려면):**
+
+```csharp
+var module = EventSystem.current?.currentInputModule;
+var input = module?.input;                        // a BaseInput; the bridge swaps it while a gesture plays
+bool virtualInput = module?.inputOverride != null; // treat as focused: do not require Application.isFocused
+// Mouse: input.mousePosition (bottom-left origin), input.GetMouseButton/Down/Up(0..2), input.mouseScrollDelta. Not UnityEngine.Input.
+// Keys and modifiers: input has public bool GetKey/GetKeyDown/GetKeyUp(KeyCode) when virtual; find them by name (reflection or dynamic).
+// Otherwise (inputOverride == null) read the real UnityEngine.Input as before.
+```
+
+### 읽기 쉬운 캡처
+
+스크린샷은 에이전트가 보는 것이므로 도구마다 한 종류의 정보를 구분하기 쉽게 만듭니다. 이미지 도구는
+모두 PNG, 숫자를 담은 텍스트, 그리고 매핑(이미지가 창의 어느 영역을 보여 주는지, 어떻게 축소됐는지)이
+들어 있는 `imageId`를 돌려줍니다.
+
+- `warudo_screen_capture`: 창 전체를 `maxSize`(기본 1600)에 맞춥니다. `region` [x, y, w, h] 또는
+  `around` { objectId | path }(플러그인 오버레이 패널을 포함한 UI 오브젝트, 또는 렌더러)는 먼저 원본
+  해상도로 잘라 내므로 작은 글자도 읽을 수 있습니다. `grid`는 창 픽셀 단위로 라벨이 붙은 좌표 격자를
+  덮어 그립니다.
+- `warudo_ui_capture`: `warudo_ui_list`가 돌려주는 모든 컨트롤 위에 번호 상자를 그린 같은 스크린샷입니다.
+  종류(button, toggle, slider, input, scroll)별로 색이 다르고 범례가 텍스트로 함께 옵니다.
+  `warudo_ui_click`은 이어서 `mark`(번호, 컨트롤이 바뀌었으면 `MARK_STALE`로 거절) 또는 `near`(보이는
+  글자, 정확히 일치가 먼저, 그다음 포함)를 받습니다.
+- 제스처 캡처(포인터 도구나 `warudo_ui_click`의 `capture: true`): 이미지에 포인터가 그려집니다(누름,
+  놓음, 드래그 경로, `markPointer`). `captureBefore: true`는 BEFORE와 AFTER를 PNG 한 장에 나란히 주고,
+  AFTER에는 바뀐 영역을 상자로 표시하고 차이 수치를 붙입니다.
+- `warudo_screen_diff`: 지금의 창을 이전 캡처(`baseline` = 캡처 도구가 돌려준 경로)와 비교합니다. 안 바뀐
+  픽셀은 회색, 바뀐 픽셀은 색으로 보이고, 상자에 번호가 붙고, 상자마다 전후의 평균 색이 나옵니다.
+- `warudo_screen_probe`: 텍스트만 돌려줍니다. 점과 영역의 평균, 중앙값, HSV, 휘도, 최소·최대 RGB로,
+  그림에서 픽셀을 읽지 않고도 색을 비교할 수 있습니다.
+- `warudo_screen_sequence`: 렌더된 K프레임마다 하나씩 2~16프레임을 번호가 붙은 컨택트 시트 한 장으로
+  주고, 각 프레임이 직전 프레임에서 얼마나 바뀌었는지도 알려 줍니다(호버, 애니메이션, 깜빡임 확인).
+- **보이는 곳을 그대로 클릭.** 포인터 도구, `warudo_ui_at`, 또는 캡처 도구의 `region`/`points`에
+  `space: "image"`(필요하면 `imageId`도, 기본은 이 MCP 서버의 가장 최근 이미지이며 마지막 32장을 보관)를
+  주면 x/y는 받은 이미지의 픽셀입니다. 서버가 창 픽셀로 바꿔 줍니다. 이미지 밖의 점, 전후 시트의 AFTER
+  패널 밖의 점, 컨택트 시트 위의 점은 거절됩니다.
+- **이 버전의 런타임이 필요합니다**(기능 `capture-tools`). `npm run check:pixels`는 UnityEngine 스텁을
+  쓴 일반 .NET 위에서 픽셀 계산(자르기, 축소, diff 상자, 색 통계)을 실행합니다. `npm run check:runtime`과
+  같은 .NET SDK와 WARUDO 파일이 필요합니다.
 
 ### 설정
 
 `%USERPROFILE%\.warudo-agent-bridge\config.json` ([config.example.json](config.example.json)에서 만들어짐):
 
+- `pointer`: `enabled`(기본 `true`)는 가상 포인터와 `warudo_ui_set_text`를 켜고 끕니다.
+  `idleReleaseMs`(기본 15000, 1000..600000)는 세워 둔 포인터나 누른 버튼이 다음 호출을 기다렸다가
+  놓이기까지의 시간입니다.
 - `componentCall.allow`: 에이전트가 호출해도 되는 Unity 컴포넌트 메서드.
   `{"typePrefix": "My.Namespace.", "methods": ["Refresh"]}` 형식으로 적습니다. 기본은 비어 있어서
   `warudo_component_call`은 꺼져 있습니다.
