@@ -24,7 +24,7 @@ namespace StudioRaming.WarudoAgentBridge
     {
         const string Version = "0.2.0";
         const int Protocol = 2;
-        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings", "pointer" };
+        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings", "pointer", "capture-tools" };
 
         string home, root, session, leaseOwner, activeRequest;
         DateTime leaseUntil;

@@ -123,6 +123,8 @@ namespace StudioRaming.WarudoAgentBridge
             bool keep = ((bool?)p["keep"] ?? false) || post.Buttons != 0 || post.Keys.Length != 0;
             int settle = Mathf.Clamp((int?)p["settleFrames"] ?? 2, 0, 60);
             bool capture = (bool?)p["capture"] ?? false;
+            // A bad capture option or an unframeable target must fail before the gesture runs, not after it clicked.
+            if (capture) ResolveCrop(CaptureOptions.Parse(p), screenWidth, screenHeight);
             int? expectId = (int?)p["expectObject"];
             int pressRow = Array.FindIndex(rows, row => row.Down != 0);
             int releaseRow = Array.FindLastIndex(rows, row => row.Up != 0);
@@ -176,7 +178,7 @@ namespace StudioRaming.WarudoAgentBridge
                 }
 
                 // The capture is taken while the virtual pointer is still parked, so hover and pressed looks are in it.
-                object captured = capture ? await ScreenOperation("screen.capture", new JObject()) : null;
+                object captured = capture ? await CaptureScreen(p) : null;
                 completed = true;
                 EventSystem current = EventSystem.current;
                 GameObject selected = current == null ? null : current.currentSelectedGameObject;

@@ -737,13 +737,21 @@ Kind: `read` (read-only). Runtime operation: `analysis.capture`.
 
 ### warudo_screen_capture
 
-Capture the final WARUDO frame including screen-space UI and return the PNG.
+Capture the final WARUDO frame including screen-space UI and return the PNG, fitted to maxSize (default 1600, so a 2560x1440 window comes back at 1600x900; maxSize 4096 keeps full resolution). Zoom with region or around (cropped at full resolution first, so small text stays readable) and add grid to read coordinates off the image. The reply lists the crop used, the numbers of the image mapping and an imageId. The reply carries an imageId and a mapping; to click where you see something in the image you received, pass space="image" with x/y of that image to a pointer tool.
 
 Kind: `read` (read-only). Runtime operation: `screen.capture`.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `timeoutMs` | integer |  | (100..10000, default 2000) |
+| `maxSize` | integer |  | Longest side of the returned PNG in pixels. The image is never enlarged. 4096 keeps a 2560x1440 window at full resolution; 1600 is about what a model is shown 1:1. (256..4096, default 1600) |
+| `grid` | boolean |  | Overlay a coordinate grid (thin two-tone lines at about 25 % opacity) labeled in WINDOW pixels at the top and left edges, however the image is cropped or scaled, so click coordinates can be read straight off the image. (default false) |
+| `gridStep` | integer |  | Window pixels between grid lines. Passing it turns the grid on. (10..1000, default 100) |
+| `region` | number[] |  | [x, y, width, height] in window pixels (top-left origin), cropped at full resolution before the image is fitted to maxSize. Must lie inside the window. |
+| `around` | object |  | Frame an object instead of a region: { objectId } or { path } of a UI object (its RectTransform on screen, plugin overlay panels included) or of a renderer or GameObject (its bounds projected with the main camera). The reply returns the crop used. |
+| `padding` | integer |  | Window pixels added around the framed object. (0..400, default 16) |
+| `space` | `pixels` \| `image` |  | pixels: window pixels. image: pixels of an image a capture tool returned (the latest one, or the one named by imageId), so a point read off that image is clicked exactly there with no scale math. Applies to region and points. (default "pixels") |
+| `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 
 ### warudo_viewport_pick
 
@@ -888,7 +896,7 @@ Kind: `read` (read-only). Runtime operation: `render.globals`.
 
 ### warudo_pointer_click
 
-Click (or double click) at a point of the WARUDO main window with a virtual mouse, without bringing WARUDO to the front. The click is played into WARUDO's UI for a few frames through Unity's input module; no OS input is sent. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. Find the point with warudo_ui_list or warudo_ui_at, or use warudo_ui_click for a control you know by its label. The reply says what was under the pointer at press and release and which object received the click. A double click needs about 15 frames per second or more to count as one.
+Click (or double click) at a point of the WARUDO main window with a virtual mouse, without bringing WARUDO to the front. The click is played into WARUDO's UI for a few frames through Unity's input module; no OS input is sent. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId. Find the point with warudo_ui_list or warudo_ui_at, or use warudo_ui_click for a control you know by its label. The reply says what was under the pointer at press and release and which object received the click. A double click needs about 15 frames per second or more to count as one.
 
 Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
 
@@ -896,18 +904,25 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | --- | --- | --- | --- |
 | `x` | number | yes | Horizontal position, left to right. |
 | `y` | number | yes | Vertical position, top to bottom. |
-| `space` | `pixels` \| `normalized` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. (default "pixels") |
+| `space` | `pixels` \| `normalized` \| `image` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. image: pixels of an image a capture tool returned (the latest one, or the one named by imageId), so a point read off that image is clicked exactly there with no scale math. (default "pixels") |
+| `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 | `button` | `left` \| `right` \| `middle` |  | (default "left") |
 | `count` | `1` \| `2` |  | (default 1) |
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `holdFrames` | integer |  | Frames the button stays down (at most 4 for a double click). (1..30, default 2) |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
 | `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, from warudo_ui_list. If something else is on top the gesture stops before pressing with COVERED. |
-| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image. (default false) |
+| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around and padding shape that image and need capture=true. (default false) |
+| `maxSize` | integer |  | Longest side of the returned PNG in pixels. The image is never enlarged. 4096 keeps a 2560x1440 window at full resolution; 1600 is about what a model is shown 1:1. (256..4096, default 1600) |
+| `grid` | boolean |  | Overlay a coordinate grid (thin two-tone lines at about 25 % opacity) labeled in WINDOW pixels at the top and left edges, however the image is cropped or scaled, so click coordinates can be read straight off the image. (default false) |
+| `gridStep` | integer |  | Window pixels between grid lines. Passing it turns the grid on. (10..1000, default 100) |
+| `region` | number[] |  | [x, y, width, height] in window pixels (top-left origin), cropped at full resolution before the image is fitted to maxSize. Must lie inside the window. |
+| `around` | object |  | Frame an object instead of a region: { objectId } or { path } of a UI object (its RectTransform on screen, plugin overlay panels included) or of a renderer or GameObject (its bounds projected with the main camera). The reply returns the crop used. |
+| `padding` | integer |  | Window pixels added around the framed object. (0..400, default 16) |
 
 ### warudo_pointer_drag
 
-Press at the first point, move along the path one small step per frame, and release on the last point, with the virtual mouse. For sliders, scroll bars, sorting and window resizing. Give frames per segment or totalFrames for the whole path. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. The gesture is limited to 600 frames and 64 points.
+Press at the first point, move along the path one small step per frame, and release on the last point, with the virtual mouse. For sliders, scroll bars, sorting and window resizing. Give frames per segment or totalFrames for the whole path. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId. The gesture is limited to 600 frames and 64 points.
 
 Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
 
@@ -916,16 +931,23 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | `path` | number[][] | yes | Points [x, y]; the pointer moves to the first, presses, then follows the rest. |
 | `frames` | integer |  | Frames per segment between two points. (1..60, default 6) |
 | `totalFrames` | integer |  | Frames for the whole path, spread by segment length. Wins over frames. (1..597) |
-| `space` | `pixels` \| `normalized` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. (default "pixels") |
+| `space` | `pixels` \| `normalized` \| `image` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. image: pixels of an image a capture tool returned (the latest one, or the one named by imageId), so a point read off that image is clicked exactly there with no scale math. (default "pixels") |
+| `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 | `button` | `left` \| `right` \| `middle` |  | (default "left") |
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
 | `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, from warudo_ui_list. If something else is on top the gesture stops before pressing with COVERED. |
-| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image. (default false) |
+| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around and padding shape that image and need capture=true. (default false) |
+| `maxSize` | integer |  | Longest side of the returned PNG in pixels. The image is never enlarged. 4096 keeps a 2560x1440 window at full resolution; 1600 is about what a model is shown 1:1. (256..4096, default 1600) |
+| `grid` | boolean |  | Overlay a coordinate grid (thin two-tone lines at about 25 % opacity) labeled in WINDOW pixels at the top and left edges, however the image is cropped or scaled, so click coordinates can be read straight off the image. (default false) |
+| `gridStep` | integer |  | Window pixels between grid lines. Passing it turns the grid on. (10..1000, default 100) |
+| `region` | number[] |  | [x, y, width, height] in window pixels (top-left origin), cropped at full resolution before the image is fitted to maxSize. Must lie inside the window. |
+| `around` | object |  | Frame an object instead of a region: { objectId } or { path } of a UI object (its RectTransform on screen, plugin overlay panels included) or of a renderer or GameObject (its bounds projected with the main camera). The reply returns the crop used. |
+| `padding` | integer |  | Window pixels added around the framed object. (0..400, default 16) |
 
 ### warudo_pointer_move
 
-Move the virtual mouse to a point and hold it there without pressing, for hover outlines, tooltips and mouse-over effects. keep=true leaves the virtual pointer parked there after the reply (it is released by warudo_pointer_release, the next pointer call, the lease ending, or after pointer.idleReleaseMs of no use). It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly.
+Move the virtual mouse to a point and hold it there without pressing, for hover outlines, tooltips and mouse-over effects. keep=true leaves the virtual pointer parked there after the reply (it is released by warudo_pointer_release, the next pointer call, the lease ending, or after pointer.idleReleaseMs of no use). It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId.
 
 Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
 
@@ -933,15 +955,22 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | --- | --- | --- | --- |
 | `x` | number | yes | Horizontal position, left to right. |
 | `y` | number | yes | Vertical position, top to bottom. |
-| `space` | `pixels` \| `normalized` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. (default "pixels") |
+| `space` | `pixels` \| `normalized` \| `image` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. image: pixels of an image a capture tool returned (the latest one, or the one named by imageId), so a point read off that image is clicked exactly there with no scale math. (default "pixels") |
+| `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 | `frames` | integer |  | Frames to stay at the point. (1..120, default 2) |
 | `keep` | boolean |  | (default false) |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
-| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image. (default false) |
+| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around and padding shape that image and need capture=true. (default false) |
+| `maxSize` | integer |  | Longest side of the returned PNG in pixels. The image is never enlarged. 4096 keeps a 2560x1440 window at full resolution; 1600 is about what a model is shown 1:1. (256..4096, default 1600) |
+| `grid` | boolean |  | Overlay a coordinate grid (thin two-tone lines at about 25 % opacity) labeled in WINDOW pixels at the top and left edges, however the image is cropped or scaled, so click coordinates can be read straight off the image. (default false) |
+| `gridStep` | integer |  | Window pixels between grid lines. Passing it turns the grid on. (10..1000, default 100) |
+| `region` | number[] |  | [x, y, width, height] in window pixels (top-left origin), cropped at full resolution before the image is fitted to maxSize. Must lie inside the window. |
+| `around` | object |  | Frame an object instead of a region: { objectId } or { path } of a UI object (its RectTransform on screen, plugin overlay panels included) or of a renderer or GameObject (its bounds projected with the main camera). The reply returns the crop used. |
+| `padding` | integer |  | Window pixels added around the framed object. (0..400, default 16) |
 
 ### warudo_pointer_button
 
-Press (down) or release (up) one mouse button, optionally at x and y first, for gestures made of several calls: button down, a few warudo_pointer_move calls with keep, button up. A button left down keeps the virtual pointer parked until the matching up, a warudo_pointer_release, the lease ending, or pointer.idleReleaseMs of no use. Modifiers are held only during this call. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly.
+Press (down) or release (up) one mouse button, optionally at x and y first, for gestures made of several calls: button down, a few warudo_pointer_move calls with keep, button up. A button left down keeps the virtual pointer parked until the matching up, a warudo_pointer_release, the lease ending, or pointer.idleReleaseMs of no use. Modifiers are held only during this call. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId.
 
 Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
 
@@ -951,15 +980,22 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | `button` | `left` \| `right` \| `middle` |  | (default "left") |
 | `x` | number |  | Horizontal position, left to right. |
 | `y` | number |  | Vertical position, top to bottom. |
-| `space` | `pixels` \| `normalized` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. (default "pixels") |
+| `space` | `pixels` \| `normalized` \| `image` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. image: pixels of an image a capture tool returned (the latest one, or the one named by imageId), so a point read off that image is clicked exactly there with no scale math. (default "pixels") |
+| `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
 | `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, from warudo_ui_list. If something else is on top the gesture stops before pressing with COVERED. |
-| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image. (default false) |
+| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around and padding shape that image and need capture=true. (default false) |
+| `maxSize` | integer |  | Longest side of the returned PNG in pixels. The image is never enlarged. 4096 keeps a 2560x1440 window at full resolution; 1600 is about what a model is shown 1:1. (256..4096, default 1600) |
+| `grid` | boolean |  | Overlay a coordinate grid (thin two-tone lines at about 25 % opacity) labeled in WINDOW pixels at the top and left edges, however the image is cropped or scaled, so click coordinates can be read straight off the image. (default false) |
+| `gridStep` | integer |  | Window pixels between grid lines. Passing it turns the grid on. (10..1000, default 100) |
+| `region` | number[] |  | [x, y, width, height] in window pixels (top-left origin), cropped at full resolution before the image is fitted to maxSize. Must lie inside the window. |
+| `around` | object |  | Frame an object instead of a region: { objectId } or { path } of a UI object (its RectTransform on screen, plugin overlay panels included) or of a renderer or GameObject (its bounds projected with the main camera). The reply returns the crop used. |
+| `padding` | integer |  | Window pixels added around the framed object. (0..400, default 16) |
 
 ### warudo_pointer_wheel
 
-Turn the virtual mouse wheel over a point: positive notches scroll up, negative down, at most 20, spread over frames. For scroll lists and panels. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly.
+Turn the virtual mouse wheel over a point: positive notches scroll up, negative down, at most 20, spread over frames. For scroll lists and panels. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId.
 
 Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
 
@@ -969,10 +1005,17 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | `y` | number | yes | Vertical position, top to bottom. |
 | `notches` | integer | yes | Wheel notches, + up, - down (not 0). (-20..20) |
 | `frames` | integer |  | Frames to spread the notches over. Default: one frame per notch. (1..60) |
-| `space` | `pixels` \| `normalized` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. (default "pixels") |
+| `space` | `pixels` \| `normalized` \| `image` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. image: pixels of an image a capture tool returned (the latest one, or the one named by imageId), so a point read off that image is clicked exactly there with no scale math. (default "pixels") |
+| `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
-| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image. (default false) |
+| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around and padding shape that image and need capture=true. (default false) |
+| `maxSize` | integer |  | Longest side of the returned PNG in pixels. The image is never enlarged. 4096 keeps a 2560x1440 window at full resolution; 1600 is about what a model is shown 1:1. (256..4096, default 1600) |
+| `grid` | boolean |  | Overlay a coordinate grid (thin two-tone lines at about 25 % opacity) labeled in WINDOW pixels at the top and left edges, however the image is cropped or scaled, so click coordinates can be read straight off the image. (default false) |
+| `gridStep` | integer |  | Window pixels between grid lines. Passing it turns the grid on. (10..1000, default 100) |
+| `region` | number[] |  | [x, y, width, height] in window pixels (top-left origin), cropped at full resolution before the image is fitted to maxSize. Must lie inside the window. |
+| `around` | object |  | Frame an object instead of a region: { objectId } or { path } of a UI object (its RectTransform on screen, plugin overlay panels included) or of a renderer or GameObject (its bounds projected with the main camera). The reply returns the crop used. |
+| `padding` | integer |  | Window pixels added around the framed object. (0..400, default 16) |
 
 ### warudo_pointer_release
 
@@ -1018,7 +1061,7 @@ Kind: `read` (read-only). Runtime operation: `ui.list`. Needs runtime feature `p
 
 ### warudo_ui_at
 
-Read what is under a point of the WARUDO main window: every UI raycast hit front to back (path, module, depth, sorting order, distance), whether the pointer is over UI at all, and the objects that would receive a click, a drag and a wheel turn there. Use it to see what covers a control.
+Read what is under a point of the WARUDO main window: every UI raycast hit front to back (path, module, depth, sorting order, distance), whether the pointer is over UI at all, and the objects that would receive a click, a drag and a wheel turn there. Use it to see what covers a control. Pass space="image" to give x/y in pixels of an image you received.
 
 Kind: `read` (read-only). Runtime operation: `ui.at`. Needs runtime feature `pointer`.
 
@@ -1026,7 +1069,8 @@ Kind: `read` (read-only). Runtime operation: `ui.at`. Needs runtime feature `poi
 | --- | --- | --- | --- |
 | `x` | number | yes | Horizontal position, left to right. |
 | `y` | number | yes | Vertical position, top to bottom. |
-| `space` | `pixels` \| `normalized` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. (default "pixels") |
+| `space` | `pixels` \| `normalized` \| `image` |  | pixels: window pixels, origin top-left (what warudo_ui_list returns). normalized: 0..1 of the window. image: pixels of an image a capture tool returned (the latest one, or the one named by imageId), so a point read off that image is clicked exactly there with no scale math. (default "pixels") |
+| `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 
 ### warudo_ui_click
 
@@ -1045,7 +1089,13 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, after the MCP 
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `holdFrames` | integer |  | (1..30, default 2) |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
-| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image. (default false) |
+| `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around and padding shape that image and need capture=true. (default false) |
+| `maxSize` | integer |  | Longest side of the returned PNG in pixels. The image is never enlarged. 4096 keeps a 2560x1440 window at full resolution; 1600 is about what a model is shown 1:1. (256..4096, default 1600) |
+| `grid` | boolean |  | Overlay a coordinate grid (thin two-tone lines at about 25 % opacity) labeled in WINDOW pixels at the top and left edges, however the image is cropped or scaled, so click coordinates can be read straight off the image. (default false) |
+| `gridStep` | integer |  | Window pixels between grid lines. Passing it turns the grid on. (10..1000, default 100) |
+| `region` | number[] |  | [x, y, width, height] in window pixels (top-left origin), cropped at full resolution before the image is fitted to maxSize. Must lie inside the window. |
+| `around` | object |  | Frame an object instead of a region: { objectId } or { path } of a UI object (its RectTransform on screen, plugin overlay panels included) or of a renderer or GameObject (its bounds projected with the main camera). The reply returns the crop used. |
+| `padding` | integer |  | Window pixels added around the framed object. (0..400, default 16) |
 
 ### warudo_ui_set_text
 

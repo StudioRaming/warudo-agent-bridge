@@ -1,4 +1,5 @@
 import { BridgeError } from './transport.mjs';
+import { normalizeCaptureOptions } from './capture-options.mjs';
 
 // Builds the frame-stamped timelines that the runtime's pointer.play operation replays into WARUDO's UI, and
 // resolves ui.list rows for warudo_ui_click. Pure functions, so the tests cover them without WARUDO.
@@ -67,6 +68,13 @@ function finish(gesture, args, { steps, frames, space, screen, keys = [], keep }
   if (args.settleFrames !== undefined) plan.settleFrames = integer(args.settleFrames, 2, 0, 60, 'settleFrames');
   if (args.expectObject !== undefined) plan.expectObject = integer(args.expectObject, 0, -2_147_483_648, 2_147_483_647, 'expectObject');
   if (args.capture !== undefined) plan.capture = args.capture === true;
+  // Options of the image the gesture returns (maxSize, grid, region, around, padding, markPointer, captureBefore).
+  const options = normalizeCaptureOptions(args);
+  if (Object.keys(options).length) {
+    if (options.captureBefore === true) plan.capture = true;
+    if (plan.capture !== true) throw invalid(`${Object.keys(options).join(', ')} shape the captured image and need capture=true.`);
+    Object.assign(plan, options);
+  }
   return plan;
 }
 

@@ -16,81 +16,11 @@ namespace StudioRaming.WarudoAgentBridge
         const long ScreenCaptureMaxPixels = 16777216L;
         const int ScreenCaptureMaxPngBytes = 64 * 1024 * 1024;
 
+        // The capture itself (crop, fit, grid, PNG, raw cache) lives in AgentBridgePlugin.Capture.cs.
         async UniTask<object> ScreenOperation(string op, JObject p)
         {
             if (op != "screen.capture") throw new ArgumentException("Unsupported screen operation: " + op);
-            int superSize = OptionalSuperSize(p);
-            int timeoutMs = OptionalTimeout(p);
-            float started = Time.realtimeSinceStartup;
-            string path = ScreenEvidencePath();
-            if (File.Exists(path)) throw new InvalidOperationException("SCREEN_CAPTURE_OUTPUT_EXISTS: request evidence path already exists.");
-
-            int width;
-            int height;
-            byte[] png;
-            using (var cancellation = new CancellationTokenSource(timeoutMs))
-            {
-                try
-                {
-                    // Wait until cameras and Screen Space Overlay UI have rendered.
-                    Context runner = Context.Instance;
-                    if (runner == null) throw new InvalidOperationException("SCREEN_CAPTURE_UNAVAILABLE: WARUDO frame runner is not available.");
-                    await UniTask.WaitForEndOfFrame(runner, cancellation.Token);
-                    width = Screen.width;
-                    height = Screen.height;
-                    ValidateDimensions(width, height, superSize);
-
-                    RenderTexture previous = RenderTexture.active;
-                    Texture2D image = null;
-                    try
-                    {
-                        // A null active RenderTexture makes ReadPixels read the final GameView backbuffer.
-                        RenderTexture.active = null;
-                        image = new Texture2D(width, height, TextureFormat.RGBA32, false);
-                        image.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
-                        image.Apply(false, false);
-                        png = image.EncodeToPNG();
-                    }
-                    finally
-                    {
-                        RenderTexture.active = previous;
-                        if (image != null) UnityEngine.Object.Destroy(image);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw new TimeoutException("SCREEN_CAPTURE_TIMEOUT: EndOfFrame or backbuffer readback exceeded the requested timeout.");
-                }
-            }
-
-            if (png == null || png.Length == 0 || png.Length > ScreenCaptureMaxPngBytes)
-                throw new InvalidOperationException("SCREEN_CAPTURE_TOO_LARGE: encoded PNG is empty or exceeds the64 MiB guard.");
-            WriteEvidencePng(path, png);
-            if (!HasCompletePng(path))
-            {
-                TryDelete(path);
-                throw new InvalidOperationException("SCREEN_CAPTURE_FAILED: PNG signature or IEND chunk is incomplete.");
-            }
-
-            return new
-            {
-                path,
-                width,
-                height,
-                outputWidth = width,
-                outputHeight = height,
-                superSize,
-                bytes = png.Length,
-                frame = Time.frameCount,
-                frameWaited = true,
-                frameWaitMs = Math.Round((Time.realtimeSinceStartup - started) * 1000f, 3),
-                captureApi = "UnityEngine.Texture2D.ReadPixels(backbuffer) + EncodeToPNG",
-                includesScreenSpaceOverlay = true,
-                cameraChanged = false,
-                sceneChanged = false,
-                managedTextureAllocated = true,
-                managedTextureDestroyed = true
-            };
+            return await CaptureScreen(p);
         }
 
         static int OptionalSuperSize(JObject p)

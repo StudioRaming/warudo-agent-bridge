@@ -1,6 +1,8 @@
 import readline from 'node:readline';
 import process from 'node:process';
-import { request, responseError, readEvidencePng, readHeartbeat, defaultOwner, BridgeError, BridgeUnknownError } from './transport.mjs';
+import { request, responseError, readEvidencePng, readHeartbeat, evidencePngPath, defaultOwner, BridgeError, BridgeUnknownError } from './transport.mjs';
+import { captureOptionsUsed, validateCaptureArgs, CAPTURE_KEYS } from './capture-options.mjs';
+import { ImageStore } from './image-space.mjs';
 import { buildClickPlan, buildPointerPlan, clickPoint, resolveUiTarget } from './pointer-timeline.mjs';
 import { TOOLS, TOOL_BY_NAME } from './tools.mjs';
 import { VERSION } from './version.mjs';
@@ -26,6 +28,8 @@ const textContent = (value) => ({ type: 'text', text: typeof value === 'string' 
 const isCapture = (name) => name === 'warudo_camera_capture' || name === 'warudo_screen_capture' || name === 'warudo_analysis_capture';
 // Capture tools return the PNG path at the top; a pointer gesture with capture=true returns it under "capture".
 const evidencePath = (name, data) => (isCapture(name) ? data && data.path : data && data.capture && data.capture.path);
+// The capture options a gesture forwards from the arguments it was called with.
+const captureArgs = (args) => Object.fromEntries(CAPTURE_KEYS.filter((key) => args[key] !== undefined).map((key) => [key, args[key]]));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const IDEMPOTENT_KINDS = new Set(['read', 'set', 'lease']);
 // 2026-07-28 list results must carry ttlMs (int >= 0) and cacheScope ("public" | "private"); Claude Code rejects them otherwise.
@@ -43,6 +47,8 @@ function errorPayload(error) {
 export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, autoLease = true } = {}) {
   const transportOptions = { home, owner, timeoutMs };
   let legacyVersion = null;
+  // The last 32 images this server returned, with where each sits in the window (src/image-space.mjs).
+  const images = new ImageStore();
 
   // idempotent: reads and absolute-value writes may be retried once if a reload interrupts them.
   async function operation(name, args, idempotent = false) {
@@ -95,9 +101,22 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
     const listed = await operation('ui.list', { ...(id !== undefined ? { id } : { query: label }), interactableOnly: false, limit: 500 }, true);
     const target = resolveUiTarget(listed.items ?? [], { id, label, labelMatch, index }, { truncated: listed.truncated === true });
     const [x, y] = clickPoint(target, listed.screen);
-    const plan = buildClickPlan({ x, y, button: args.button, count: args.count, modifiers: args.modifiers, holdFrames: args.holdFrames, settleFrames: args.settleFrames, capture: args.capture, expectObject: target.id });
+    const plan = buildClickPlan({ x, y, button: args.button, count: args.count, modifiers: args.modifiers, holdFrames: args.holdFrames, settleFrames: args.settleFrames, capture: args.capture, ...captureArgs(args), expectObject: target.id });
     const result = await callRuntime(tool, plan);
     return { ...result, resolved: { id: target.id, path: target.path, label: target.label, point: [x, y] } };
+  }
+
+  // Remembers where an image sits in the window and tells the caller its imageId (top level of a capture tool's reply, under
+  // "capture" for a gesture).
+  function registerImage(name, data) {
+    const holder = isCapture(name) ? data : data && data.capture;
+    const mapping = holder && holder.mapping;
+    if (!mapping || typeof mapping !== 'object') return;
+    try {
+      holder.imageId = images.add(mapping);
+    } catch {
+      // A mapping this server cannot read (an older runtime): the image is still returned, just without an imageId.
+    }
   }
 
   async function waitLoaded(args) {
@@ -117,10 +136,15 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
     const tool = TOOL_BY_NAME.get(name);
     let data;
     try {
+      // space="image" first: x/y, path, points and region become window pixels, then the argument checks run on those.
+      let callArgs = tool.inputSchema.properties.space?.enum?.includes('image') ? images.convert(args).args : args;
+      if (tool.check) callArgs = validateCaptureArgs(tool.check, callArgs, { evidencePath: (candidate) => evidencePngPath(home, candidate) });
       if (tool.requires) await requireFeature(tool.requires);
-      if (tool.local === 'waitLoaded') data = await waitLoaded(args);
-      else if (tool.local === 'uiClick') data = await uiClick(tool, args);
-      else data = await callRuntime(tool, tool.plan ? buildPointerPlan(tool.plan, args) : args);
+      if (tool.requiresCapture && captureOptionsUsed(callArgs)) await requireFeature('capture-tools');
+      if (tool.local === 'waitLoaded') data = await waitLoaded(callArgs);
+      else if (tool.local === 'uiClick') data = await uiClick(tool, callArgs);
+      else data = await callRuntime(tool, tool.plan ? buildPointerPlan(tool.plan, callArgs) : callArgs);
+      registerImage(name, data);
     } catch (error) {
       return { isError: true, content: [textContent(errorPayload(error))] };
     }

@@ -42,7 +42,7 @@ test('pointer tool schemas ask for what the runtime needs', () => {
   assert.deepEqual(byName.warudo_pointer_wheel.inputSchema.required, ['x', 'y', 'notches']);
   assert.deepEqual(byName.warudo_ui_set_text.inputSchema.required, ['id', 'text']);
   assert.deepEqual(byName.warudo_key_virtual.inputSchema.required, ['key']);
-  assert.deepEqual(byName.warudo_pointer_click.inputSchema.properties.space.enum, ['pixels', 'normalized']);
+  assert.deepEqual(byName.warudo_pointer_click.inputSchema.properties.space.enum, ['pixels', 'normalized', 'image']);
   assert.match(byName.warudo_pointer_click.description, /camera/, 'says what it does not reach');
   assert.match(byName.warudo_key_virtual.description, /warudo_input_key/, 'points hotkey users to the real hotkey tool');
 });
