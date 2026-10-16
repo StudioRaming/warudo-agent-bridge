@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Builds the pure framing math of the runtime on its own (no Unity) so tests/shot-framing.test.mjs can run it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ShotTfm Condition="'$(ShotTfm)'==''">net8.0</ShotTfm>
+    <TargetFramework>$(ShotTfm)</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>9.0</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>CS0649;CS0169;CS0414</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../runtime/AgentBridgePlugin.ShotMath.cs" Link="ShotMath.cs" />
+  </ItemGroup>
+</Project>
