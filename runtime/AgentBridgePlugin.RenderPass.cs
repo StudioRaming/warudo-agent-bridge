@@ -140,9 +140,8 @@ namespace StudioRaming.WarudoAgentBridge
             string[] include = (p["include"] as JArray)?.Select(v => (string)v).Where(v => !string.IsNullOrEmpty(v)).ToArray() ?? new string[0];
             bool labels = (bool?)p["labels"] ?? true;
 
-            GameObjectAsset target;
-            if (!string.IsNullOrEmpty((string)p["assetId"])) target = AssetById(p) as GameObjectAsset ?? throw new ArgumentException("assetId is not an asset with a GameObject.");
-            else target = CharacterById(p);
+            object[] otherCharacters;
+            GameObjectAsset target = PickTarget(p, out otherCharacters);
             if (target.GameObject == null) throw new InvalidOperationException("ASSET_NOT_LOADED: " + target.Name + " has no GameObject yet.");
             CharacterAsset character = target as CharacterAsset;
             Animator animator = character != null && character.Animator != null && character.Animator.isHuman ? character.Animator : null;
@@ -225,7 +224,7 @@ namespace StudioRaming.WarudoAgentBridge
 
             return new
             {
-                path, width = outWidth, height = outHeight, scale = Round((float)scale, 3), size, passes, views = views.Select(v => v.Name).ToArray(),
+                path, width = outWidth, height = outHeight, scale = Round((float)scale, 3), size, subject = new { assetId = target.Id.ToString(), name = target.Name }, otherCharacters, passes, views = views.Select(v => v.Name).ToArray(),
                 layout = columns + " x " + rows + " grid, left to right then top to bottom, one panel per pass x view (passes first)",
                 panels, slots = legend, passNotes = notes, renderers = scene.Used, skippedRenderers = scene.Skipped,
                 triangles = scene.Mesh.TriangleCount, cameraFrame = cameraView == null ? null : "camera view: legend frame values are 0..1 of the camera frame, origin top-left",

@@ -68,9 +68,9 @@ namespace StudioRaming.WarudoAgentBridge
             if (include.Length > 0)
             {
                 basisParts.Add("include");
-                GameObjectAsset target;
-                if (!string.IsNullOrEmpty((string)p["assetId"])) target = AssetById(p) as GameObjectAsset ?? throw new ArgumentException("assetId is not an asset with a GameObject.");
-                else target = CharacterById(p);
+                object[] others;
+                GameObjectAsset target = PickTarget(p, out others);
+                if (others.Length > 0) notes.Add("include was resolved on " + target.Name + "; other Characters exist (pass assetId to choose): " + string.Join(", ", others.Select(o => o.GetType().GetProperty("name").GetValue(o))));
                 if (target.GameObject == null) throw new InvalidOperationException("ASSET_NOT_LOADED: " + target.Name + " has no GameObject yet.");
                 Transform root = target.GameObject.transform;
                 foreach (Renderer renderer in target.GameObject.GetComponentsInChildren<Renderer>(false))

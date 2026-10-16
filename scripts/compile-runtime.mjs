@@ -38,15 +38,25 @@ const references = fs.readdirSync(layout.managed)
     return header.toString('latin1') === 'MZ';
   });
 
+// The assemblies WARUDO's Playground really references (Warudo.Plugins.Core, PlaygroundManager.InternalAssemblies, 109 names,
+// read with ilspy 2026-10-16), plus the base library. The all-DLL compile above accepts types Playground cannot see
+// (UnityEngine.Rendering.PostProcessing, Texture.isDataSRGB), so the bundle is compiled a second time with only these.
+const PLAYGROUND_ASSEMBLIES = ["ALINE","Animancer","Assembly-CSharp","AudioStream","AudioStreamSupport","Autodesk.Fbx","AVProVideo.Runtime","BezierSolution.Runtime","Cinemachine","CSCore","DOTween","DOTween.Modules","EmbedIO","Heathen.Core","Heathen.Steamworks","Hermes.Protocols","Klak.Spout","Klak.Ndi","Lasp","MagicaCloth","MessagePack","MessagePack.Annotations","MathNet.Numerics","Microsoft.CognitiveServices.Speech","NLayer","netstandard","Newtonsoft.Json","NiloToon.NiloToonURP.Runtime","Popcron.Gizmos","PusherClient","RealisticEyeMovements","Rokoko","RootMotion","RtMidi.Runtime","Swan.Lite","System","System.Core","System.Drawing","System.Linq","System.Xml","System.Net.Http","RuntimeSceneGizmo.Runtime","Steamworks.NET","SteamVR","TransformGizmo","uDesktopDuplication","ULAR","UMod","UMod-Interface","UMod-Shared","uLipSync.Runtime","uOSC.Runtime","uWindowCapture","UniGLTF","UniHumanoid","UniTask","UniTask.DOTween","UniTask.Linq","UnityEngine.JSONSerializeModule","Unity.Collections","Unity.Mathematics","Unity.RenderPipelines.Core.Runtime","Unity.RenderPipelines.Universal.Runtime","Unity.WebP","Unity.WebRTC","UnityEngine.EventSystems","UnityEngine.ImageConversionModule","UnityEngine.InputLegacyModule","UnityEngine.TextRenderingModule","UnityEngine.UnityWebRequestModule","UnityEngine.UnityWebRequestTextureModule","UnityEngine.XRModule","Unity.XR.OpenVR","Unity.XR.Management","UnityGifDecoder","Vexe.Fast.Reflection","VolumetricLightBeam","VRM","VRM10","VRM.QuickMetaLoader","VRMShaders.GLTF.IO.Runtime","Vuplex.WebView","Warudo.Core","Warudo.Plugins.Core","WebsocketSharp","ZibraAILiquid","LeapMotion.LeapCSharp","Ultraleap.Tracking.Core","Ultraleap.Tracking.Hands","MocopiReceiver","System.IO","System.Runtime","Unity.Services.Analytics","Unity.InputSystem","Unity.Timeline","UnityEngine.DirectorModule","UnityEngine.AnimationModule","UnityEngine.CoreModule","YamlDotNet","Lattice.Runtime","AssetTools.NET","FMODUnity","FMODUnityResonance","NativeWebSockets","DeviceId","UnityVicon","UnityEngine.TerrainModule","ViconUnityPlugin","ViconPluginUtils"];
+// UnityEngine.UI and UIModule are not in the list, but the pointer code that uses Canvas and EventSystem compiles in WARUDO, so Playground sees them too.
+const PLAYGROUND_BASE = ['mscorlib', 'System.Runtime', 'System.Collections', 'System.Numerics', 'UnityEngine.UI', 'UnityEngine.UIModule', 'websocket-sharp', 'UnityEngine.PhysicsModule'];
+const playgroundReferences = [...new Set([...PLAYGROUND_BASE, ...PLAYGROUND_ASSEMBLIES])]
+  .map((name) => path.join(layout.managed, name + '.dll'))
+  .filter((file) => references.includes(file));
+
 const csc = findCsc();
 
-function compile(label, sources) {
+function compile(label, sources, refs = references) {
   const out = path.join(os.tmpdir(), `warudo-agent-bridge-check-${process.pid}.dll`);
   const rsp = path.join(os.tmpdir(), `warudo-agent-bridge-check-${process.pid}.rsp`);
   fs.writeFileSync(rsp, [
     '/nologo', '/preferreduilang:en-US', '/noconfig', '/nostdlib+', '/target:library', '/langversion:9.0', '/warn:4', '/nowarn:1701,1702',
     '/define:UNITY_2021_3_OR_NEWER', `/out:"${out}"`,
-    ...references.map((file) => `/r:"${file}"`),
+    ...refs.map((file) => `/r:"${file}"`),
     ...sources.map((file) => `"${file}"`),
   ].join('\n'));
   const started = Date.now();
@@ -69,6 +79,7 @@ if (ok) {
   const bundlePath = path.join(os.tmpdir(), `${process.pid}-${RUNTIME_FILE}`);
   fs.writeFileSync(bundlePath, bundleRuntime(runtimeDir, 'check'));
   ok = compile(`bundle ${RUNTIME_FILE}`, [bundlePath]);
+  if (ok) ok = compile(`bundle ${RUNTIME_FILE} with only the Playground references (${playgroundReferences.length})`, [bundlePath], playgroundReferences);
   fs.rmSync(bundlePath, { force: true });
 }
 console.log(`${references.length} references from ${layout.managed}`);

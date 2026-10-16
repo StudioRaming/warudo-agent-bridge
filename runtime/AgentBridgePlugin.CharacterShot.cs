@@ -53,8 +53,28 @@ namespace StudioRaming.WarudoAgentBridge
             public MaskResult Mask;
             public float Coverage, Occlusion;
             public bool OcclusionKnown;
+            public string[] Touched = new string[0]; // frame edges the full-body silhouette touches (full framing only)
+            public bool TooSmall;
             public List<string> Occluders = new List<string>();
             public float Score { get { return Coverage * (1f - Occlusion); } }
+        }
+
+        // Edge contact only matters for the whole body; closer framings cut the body on purpose.
+        static void ShotJudge(ShotAttempt a, string framing, float fit)
+        {
+            MaskResult m = a.Mask;
+            if (m == null || m.Character == 0) return;
+            if (framing == "full")
+            {
+                var edges = new List<string>();
+                const float edge = 0.006f; // about one pixel of the proof render
+                if (m.X0 <= edge) edges.Add("left");
+                if (m.X1 >= 1f - edge) edges.Add("right");
+                if (m.Y0 <= edge) edges.Add("top");
+                if (m.Y1 >= 1f - edge) edges.Add("bottom");
+                a.Touched = edges.ToArray();
+            }
+            a.TooSmall = Math.Max(m.X1 - m.X0, m.Y1 - m.Y0) < 0.4f * fit;
         }
 
         static Vector3 Unity(V3 v) { return new Vector3(v.X, v.Y, v.Z); }
@@ -86,10 +106,15 @@ namespace StudioRaming.WarudoAgentBridge
             Camera main = cameraAsset == null ? null : cameraAsset.Camera;
             if (main == null) throw new InvalidOperationException("CAMERA_UNAVAILABLE: the main Camera asset has no live Camera, so there is nothing to copy the rendering from.");
             float fov = fovParameter ?? main.fieldOfView;
-            float aspect = main.aspect > 0.4f && main.aspect < 4f ? main.aspect : 16f / 9f;
+            float? aspectParameter = (float?)p["aspect"];
+            if (aspectParameter.HasValue && (float.IsNaN(aspectParameter.Value) || aspectParameter.Value < 0.3f || aspectParameter.Value > 4f)) throw new ArgumentException("aspect must be 0.3..4 (panel width / height).");
+            float mainAspect = main.aspect > 0.4f && main.aspect < 4f ? main.aspect : 16f / 9f;
+            bool portraitDefault = framing == "full" || framing == "upper"; // a standing character in 16:9 wastes most of the pixels
+            float aspect = aspectParameter ?? (portraitDefault ? 0.75f : mainAspect);
+            string aspectSource = aspectParameter.HasValue ? "aspect parameter" : portraitDefault ? "default portrait 3:4 for framing " + framing : "main camera";
 
             ShotFrame(subject, framing);
-            int columns = plans.Count <= 2 ? plans.Count : plans.Count <= 4 ? 2 : 3, rows = (plans.Count + columns - 1) / columns;
+            int columns = plans.Count <= 3 ? plans.Count : plans.Count <= 4 ? 2 : 3, rows = (plans.Count + columns - 1) / columns;
             int panelWidth = Math.Max(128, (int)(size / Math.Max(columns, rows / aspect)));
             int panelHeight = Math.Max(72, (int)Math.Round(panelWidth / aspect));
             int proofHeight = Math.Max(16, (int)Math.Round(ShotProofSize / aspect));
@@ -105,23 +130,32 @@ namespace StudioRaming.WarudoAgentBridge
                 {
                     ShotPlan plan = plans[i];
                     ShotAttempt first = ShotEvaluate(camera, subject, plan, 1f, fov, aspect, fit, ShotProofSize, proofHeight);
+                    ShotJudge(first, framing, fit);
                     ShotAttempt chosen = first;
                     object retry = null;
-                    bool tooSmall = first.Coverage < 0.10f, hidden = first.OcclusionKnown && first.Occlusion > 0.5f;
-                    if (tooSmall || hidden)
+                    // Framing is judged by the silhouette bounds, never by how many pixels the character covers (a whole body in a
+                    // frame is a small share by nature). Retry only when the whole body is cut by the frame (step back), or when more
+                    // than half of it is hidden behind something (next view).
+                    bool hidden = first.OcclusionKnown && first.Occlusion > 0.5f;
+                    bool cut = first.Touched.Length > 0;
+                    if (cut || hidden)
                     {
                         ShotPlan alternative = hidden ? ShotNextPlan(plan, pitch) : plan;
-                        ShotAttempt second = ShotEvaluate(camera, subject, alternative, hidden ? 1f : 0.6f, fov, aspect, fit, ShotProofSize, proofHeight);
-                        chosen = second.Score > first.Score ? second : first;
+                        ShotAttempt second = ShotEvaluate(camera, subject, alternative, hidden ? 1f : 1.3f, fov, aspect, fit, ShotProofSize, proofHeight);
+                        ShotJudge(second, framing, fit);
+                        bool better = hidden ? (second.Touched.Length <= first.Touched.Length && second.Score > first.Score) : second.Touched.Length <= first.Touched.Length;
+                        chosen = better ? second : first;
                         retry = new
                         {
-                            reason = hidden ? "more than 50 % of the character was hidden behind something else" : "the character covered less than 10 % of the frame",
-                            tried = hidden ? "next view " + alternative.Name : "closer, distance x 0.6",
-                            before = new { coverage = Round(first.Coverage), occlusion = first.OcclusionKnown ? (double?)Round(first.Occlusion) : null },
-                            after = new { coverage = Round(second.Coverage), occlusion = second.OcclusionKnown ? (double?)Round(second.Occlusion) : null },
+                            reason = hidden ? "more than 50 % of the character was hidden behind something else" : "the character was cut by the frame edge (" + string.Join(", ", first.Touched) + ")",
+                            tried = hidden ? "next view " + alternative.Name : "farther, distance x 1.3",
+                            before = new { coverage = Round(first.Coverage), occlusion = first.OcclusionKnown ? (double?)Round(first.Occlusion) : null, touchedEdges = first.Touched },
+                            after = new { coverage = Round(second.Coverage), occlusion = second.OcclusionKnown ? (double?)Round(second.Occlusion) : null, touchedEdges = second.Touched },
                             kept = chosen == second ? "the retry" : "the first attempt (the retry was not better)"
                         };
                     }
+                    if (chosen.Touched.Length > 0) warnings.Add(chosen.Plan.Name + ": the character still touches the frame edge (" + string.Join(", ", chosen.Touched) + "); pass a larger distance with a smaller fit.");
+                    if (chosen.TooSmall) warnings.Add(chosen.Plan.Name + ": the silhouette is far smaller than the fit target; the framing bounds are probably wrong (see framingSource).");
                     Color32[] pixels = ShotFinalRender(camera, subject, chosen, fov, panelWidth, panelHeight, background);
                     // ReadPixels is bottom-up; the sheet is built top-down so labels read normally.
                     int cx = (i % columns) * panelWidth, cy = (i / columns) * panelHeight;
@@ -136,7 +170,7 @@ namespace StudioRaming.WarudoAgentBridge
                         panel = new { x = cx, y = cy, width = panelWidth, height = panelHeight },
                         characterBounds = m == null || m.Character == 0 ? null : new { x0 = Round(m.X0), y0 = Round(m.Y0), x1 = Round(m.X1), y1 = Round(m.Y1), frame = "0..1 of the view, origin top-left" },
                         coverage = Round(chosen.Coverage), occlusion = chosen.OcclusionKnown ? (double?)Round(chosen.Occlusion) : null,
-                        occluders = chosen.Occluders, visible = chosen.Coverage >= 0.02f && (!chosen.OcclusionKnown || chosen.Occlusion < 0.9f), retry
+                        touchedEdges = framing == "full" ? chosen.Touched : null, occluders = chosen.Occluders, visible = chosen.Coverage >= 0.02f && (!chosen.OcclusionKnown || chosen.Occlusion < 0.9f), retry
                     });
                 }
             }
@@ -150,7 +184,7 @@ namespace StudioRaming.WarudoAgentBridge
                 path, width, height, layout = columns + " x " + rows + " grid, left to right then top to bottom",
                 subject = new { assetId = subject.Asset.Id.ToString(), name = subject.Asset.Name },
                 otherCharacters = choice.Others.Select(c => new { assetId = c.Id, name = c.Name, enabled = c.Enabled, loaded = c.Loaded }).ToArray(),
-                framing, framingSource = subject.BoxSource, pivot = Wire(Unity(subject.Center)), bodyHeight = Round(subject.BodyHeight),
+                aspect = Round(aspect), aspectSource, framing, framingSource = subject.BoxSource, pivot = Wire(Unity(subject.Center)), bodyHeight = Round(subject.BodyHeight),
                 fieldOfView = Round(fov, 1), fit, background, views,
                 renderers = subject.Used, skippedRenderers = subject.Skipped, warnings,
                 mainCameraMoved = false, sceneChanged = false,
@@ -197,9 +231,12 @@ namespace StudioRaming.WarudoAgentBridge
             return new ShotPlan { Name = plan.Name + " +45", Yaw = plan.Yaw + 45f, Pitch = plan.Pitch };
         }
 
-        // Finds the Character, or says exactly why it cannot be photographed. A Character asset is never "no character".
-        ShotSubject ShotSubjectFor(Scene scene, JObject p, out List<ShotCandidate> candidates, out SubjectChoice choice)
+        // The one subject chooser of the render tools: assetId, else the selected Character, else the only one, else the
+        // first enabled and loaded one; the others are listed in choice.Others. A Character asset is never "no character".
+        CharacterAsset PickCharacter(JObject p, out List<ShotCandidate> candidates, out SubjectChoice choice)
         {
+            Scene scene = Context.OpenedScene;
+            if (scene == null) throw new InvalidOperationException("NO_SCENE: no WARUDO scene is open.");
             Asset selected = scene.GetSelectedAsset();
             var characters = scene.GetAssets().Values.OfType<CharacterAsset>().ToList();
             candidates = characters.Select(c => new ShotCandidate
@@ -207,11 +244,29 @@ namespace StudioRaming.WarudoAgentBridge
                 Id = c.Id.ToString(), Name = c.Name, Enabled = c.Enabled,
                 Loaded = c.Active && c.GameObject != null && c.Animator != null, Selected = selected != null && selected.Id == c.Id
             }).ToList();
-            var types = scene.GetAssets().Values.Select(a => a.GetType().Name).Distinct().ToList();
+            var types = scene.GetAssets().Values.Select(x => x.GetType().Name).Distinct().ToList();
             SubjectChoice picked = ShotMath.PickSubject((string)p["assetId"], candidates, types);
             choice = picked;
             if (picked.Error != null) throw new InvalidOperationException(picked.Error + ": " + picked.Message);
-            CharacterAsset character = characters.First(c => c.Id.ToString() == picked.Chosen.Id);
+            return characters.First(c => c.Id.ToString() == picked.Chosen.Id);
+        }
+
+        // For render.pass and render.isolate: an explicit assetId may be any asset with a GameObject; without one the Character chooser decides.
+        GameObjectAsset PickTarget(JObject p, out object[] otherCharacters)
+        {
+            otherCharacters = new object[0];
+            if (!string.IsNullOrEmpty((string)p["assetId"])) return AssetById(p) as GameObjectAsset ?? throw new ArgumentException("assetId is not an asset with a GameObject.");
+            List<ShotCandidate> candidates; SubjectChoice choice;
+            CharacterAsset character = PickCharacter(p, out candidates, out choice);
+            otherCharacters = choice.Others.Select(c => (object)new { assetId = c.Id, name = c.Name, enabled = c.Enabled, loaded = c.Loaded }).ToArray();
+            return character;
+        }
+
+        // Finds the Character, or says exactly why it cannot be photographed.
+        ShotSubject ShotSubjectFor(Scene scene, JObject p, out List<ShotCandidate> candidates, out SubjectChoice choice)
+        {
+            CharacterAsset character = PickCharacter(p, out candidates, out choice);
+            SubjectChoice picked = choice;
             string others = picked.Others.Count == 0 ? "" : " Other characters: " + string.Join(", ", picked.Others.Select(c => c.Name + " (" + c.Id + ")")) + ".";
             if (!character.Active || character.GameObject == null || character.Animator == null)
                 throw new InvalidOperationException("CHARACTER_NOT_LOADED: " + character.Name + " (" + character.Id + ") is a Character asset but has no model yet" +
@@ -296,9 +351,36 @@ namespace StudioRaming.WarudoAgentBridge
             s.BodyHeight = height;
             if (framing == "full")
             {
+                float fullY = (min.Y + max.Y) / 2f, halfHeight = (max.Y - min.Y) / 2f;
+                float vertexHalf = Math.Max(max.X - min.X, max.Z - min.Z) / 2f; // rotation-agnostic upper bound from the vertex bounds
+                if (a != null && hips != null && head != null)
+                {
+                    // Height from the vertex bounds (hair, ears and soles included); horizontal extent from where the bones are,
+                    // so a stray accessory or far physics bone does not widen the frame. The silhouette check then confirms it.
+                    var bones = new List<V3> { Math3(hips.position), Math3(head.position) };
+                    foreach (HumanBodyBones bone in new[] { HumanBodyBones.LeftHand, HumanBodyBones.RightHand, HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot })
+                    {
+                        Transform t = a.GetBoneTransform(bone);
+                        if (t != null) bones.Add(Math3(t.position));
+                    }
+                    float r0 = float.MaxValue, r1 = float.MinValue, f0 = float.MaxValue, f1 = float.MinValue;
+                    foreach (V3 point in bones)
+                    {
+                        float r = V3.Dot(point, s.Right), fw = V3.Dot(point, s.Forward);
+                        r0 = Math.Min(r0, r); r1 = Math.Max(r1, r); f0 = Math.Min(f0, fw); f1 = Math.Max(f1, fw);
+                    }
+                    float halfWidthFull = Math.Min(vertexHalf, Math.Max(0.2f * height, (r1 - r0) / 2f + 0.08f * height));
+                    float halfDepthFull = Math.Min(vertexHalf, Math.Max(0.12f * height, (f1 - f0) / 2f + 0.10f * height));
+                    float rc = (r0 + r1) / 2f, fc = (f0 + f1) / 2f;
+                    V3 horizontal = s.Right * rc + s.Forward * fc;
+                    s.Center = new V3(horizontal.X, fullY, horizontal.Z);
+                    s.Corners = ShotMath.BoxCorners(s.Center, s.Right, up, s.Forward, halfWidthFull, halfHeight, halfDepthFull);
+                    s.BoxSource = "humanoid bones (width and depth) and renderer vertex bounds (height)";
+                    return;
+                }
                 s.Center = center;
-                s.Corners = ShotMath.BoxCorners(center, new V3(1, 0, 0), up, new V3(0, 0, 1), (max.X - min.X) / 2f, (max.Y - min.Y) / 2f, (max.Z - min.Z) / 2f);
-                s.BoxSource = "renderer vertex bounds";
+                s.Corners = ShotMath.BoxCorners(center, new V3(1, 0, 0), up, new V3(0, 0, 1), (max.X - min.X) / 2f, halfHeight, (max.Z - min.Z) / 2f);
+                s.BoxSource = "renderer vertex bounds (" + (s.Animator == null ? "the character has no Animator" : !s.Animator.isHuman ? "its Animator has no humanoid avatar" : "the humanoid avatar has no Hips or Head bone") + ")";
                 return;
             }
             float yMin, yMax, halfWidth, halfDepth;

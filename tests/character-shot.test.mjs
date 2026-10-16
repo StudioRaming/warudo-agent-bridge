@@ -33,7 +33,7 @@ test('option validation answers before anything is queued', async () => {
   try {
     const server = createServer({ home: runtime.home, owner: 'agent-a', timeoutMs: 3000 });
     const bad = [
-      { framing: 'torso' }, { background: 'green' }, { size: 100 }, { size: 4096 }, { size: 800.5 }, { pitch: 95 }, { fov: 5 }, { fit: 1.2 },
+      { framing: 'torso' }, { aspect: 0.1 }, { aspect: 5 }, { aspect: 'wide' }, { background: 'green' }, { size: 100 }, { size: 4096 }, { size: 800.5 }, { pitch: 95 }, { fov: 5 }, { fit: 1.2 },
       { views: [] }, { views: ['front', 'upside-down'] }, { views: ['front', 'front'] }, { views: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] },
       { views: ['front'], yaw: 30 }, { yaw: 'left' }, { yaw: Infinity },
     ];
@@ -57,7 +57,7 @@ test('a valid shot is forwarded as character.shot without a lease', async () => 
   });
   try {
     const server = createServer({ home: runtime.home, owner: 'agent-a', timeoutMs: 3000 });
-    const args = { framing: 'face', views: ['front', 'three-quarter', 'top'], pitch: 0, fov: 30, fit: 0.9, background: 'transparent', size: 2048 };
+    const args = { framing: 'face', views: ['front', 'three-quarter', 'top'], pitch: 0, fov: 30, fit: 0.9, aspect: 0.75, background: 'transparent', size: 2048 };
     const reply = await call(server, 1, 'warudo_character_shot', args);
     assert.equal(reply.result.isError, false);
     assert.deepEqual(runtime.seen.map((request) => request.operation), ['status', 'character.shot']);

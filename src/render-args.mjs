@@ -23,6 +23,7 @@ export function validateCharacterShotArgs(args) {
   number(args, 'pitch', -80, 89);
   number(args, 'fov', 10, 120);
   number(args, 'fit', 0.3, 1);
+  number(args, 'aspect', 0.3, 4);
   if (args.yaw !== undefined && (typeof args.yaw !== 'number' || !Number.isFinite(args.yaw))) throw invalid('yaw must be a finite number of degrees.');
   if (args.views !== undefined) {
     if (!Array.isArray(args.views) || args.views.length < 1 || args.views.length > 6) throw invalid(`views takes 1..6 of ${SHOT_VIEWS.join(', ')}.`);
