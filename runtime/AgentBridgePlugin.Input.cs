@@ -27,7 +27,7 @@ namespace StudioRaming.WarudoAgentBridge
             switch (op)
             {
                 case "pointer.play": return await PointerPlay(p, owner);
-                case "pointer.release": return await PointerReleaseOperation();
+                case "pointer.release": return await PointerReleaseOperation(RestoreLanguage("pointer.release"));
                 case "pointer.state": return PointerStateInfo();
                 default: throw new ArgumentException("Unsupported pointer operation: " + op);
             }
@@ -101,14 +101,14 @@ namespace StudioRaming.WarudoAgentBridge
             pointerDriver = null;
         }
 
-        async UniTask<object> PointerReleaseOperation()
+        async UniTask<object> PointerReleaseOperation(string languageRestored)
         {
             while (pointerReleasing) await UniTask.Yield();
             bool was = PointerActive;
             PointerState held = was ? pointerDriver.Snapshot() : null;
             if (was) await ReleasePointer("pointer.release");
             pointerLastCall = Time.realtimeSinceStartup;
-            return new { released = was, heldButtons = held == null ? new string[0] : ButtonNames(held.Buttons), heldKeys = held == null ? new string[0] : held.Keys.Select(key => key.ToString()).ToArray(), applicationFocused = Application.isFocused };
+            return new { released = was, languageRestored, heldButtons = held == null ? new string[0] : ButtonNames(held.Buttons), heldKeys = held == null ? new string[0] : held.Keys.Select(key => key.ToString()).ToArray(), applicationFocused = Application.isFocused };
         }
 
         async UniTask<object> PointerPlay(JObject p, string owner)

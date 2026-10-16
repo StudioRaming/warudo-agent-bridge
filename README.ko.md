@@ -487,6 +487,7 @@ bool virtualInput = module?.inputOverride != null; // treat as focused: do not r
   그림에서 픽셀을 읽지 않고도 색을 비교할 수 있습니다.
 - `warudo_screen_sequence`: 렌더된 K프레임마다 하나씩 2~16프레임을 번호가 붙은 컨택트 시트 한 장으로
   주고, 각 프레임이 직전 프레임에서 얼마나 바뀌었는지도 알려 줍니다(호버, 애니메이션, 깜빡임 확인).
+- `warudo_ui_language`: WARUDO 플러그인이 읽는 언어(`en`, `ja`, `ko`, `zh_CN` 등 WARUDO가 문자열을 가진 코드)를 바꿔서, WARUDO 설정을 열지 않고도 플러그인 메뉴를 언어별로 캡처할 수 있습니다. 디스크에는 아무것도 저장하지 않습니다. `restore: true`는 처음 바꾸기 전의 언어로 되돌립니다. 쓰기 lease가 끝날 때, `warudo_pointer_release`를 부를 때, 브리지가 멈출 때는 브리지가 알아서 되돌립니다(그사이 WARUDO에서 다른 언어를 직접 고른 경우는 제외). 씬을 불러오는 중에는 `SCENE_LOADING`으로 거절합니다. 기능 `ui-language`.
 - **보이는 곳을 그대로 클릭.** 포인터 도구, `warudo_ui_at`, 또는 캡처 도구의 `region`/`points`에
   `space: "image"`(필요하면 `imageId`도, 기본은 이 MCP 서버의 가장 최근 이미지이며 마지막 32장을 보관)를
   주면 x/y는 받은 이미지의 픽셀입니다. 서버가 창 픽셀로 바꿔 줍니다. 이미지 밖의 점, 전후 시트의 AFTER

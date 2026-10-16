@@ -408,6 +408,7 @@ bool virtualInput = module?.inputOverride != null; // treat as focused: do not r
 - `warudo_screen_diff`：今のウィンドウを以前のキャプチャ（`baseline` = キャプチャツールが返したパス）と比べます。変わっていないピクセルはグレー、変わったピクセルは色で表示され、枠に番号が付き、枠ごとに前後の平均色が出ます。
 - `warudo_screen_probe`：テキストのみ返します。点や領域の平均、中央値、HSV、輝度、最小・最大 RGB で、画像からピクセルを読み取らなくても色を比べられます。
 - `warudo_screen_sequence`：レンダリングされたKフレームごとに1枚、2〜16フレームを番号付きのコンタクトシート1枚で返し、各フレームが直前のフレームからどれだけ変わったかも伝えます（ホバー、アニメーション、ちらつきの確認）。
+- `warudo_ui_language`：WARUDO のプラグインが読む言語（`en`, `ja`, `ko`, `zh_CN` など WARUDO が文字列を持つコード）を切り替えるので、WARUDO の設定を開かなくてもプラグインのメニューを言語ごとにキャプチャできます。ディスクには何も保存しません。`restore: true` は最初に変える前の言語に戻します。書き込みの lease が終わったとき、`warudo_pointer_release` を呼んだとき、ブリッジが止まったときは、ブリッジが自動で戻します（その間に WARUDO で別の言語を自分で選んだ場合は除く）。シーンの読み込み中は `SCENE_LOADING` で拒否します。機能 `ui-language`。
 - **見えている場所をそのままクリック。** ポインターツール、`warudo_ui_at`、またはキャプチャツールの `region`/`points` に `space: "image"`（必要なら `imageId` も。デフォルトはこの MCP サーバーの最新の画像で、直近32枚を保持）を渡すと、x/y は受け取った画像のピクセルになります。サーバーがウィンドウのピクセルに変換します。画像の外の点、前後シートの AFTER パネルの外の点、コンタクトシート上の点は拒否されます。
 - **このバージョンのランタイムが必要です**（機能 `capture-tools`）。`npm run check:pixels` は UnityEngine のスタブを使った通常の .NET 上でピクセル計算（切り抜き、縮小、差分の枠、色の統計）を実行します。`npm run check:runtime` と同じ .NET SDK と WARUDO のファイルが必要です。
 

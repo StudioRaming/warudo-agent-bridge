@@ -36,7 +36,7 @@ ChatGPT and Claude can normally **only chat in text**. They cannot click buttons
 
 **MCP** (Model Context Protocol) is a **common spec for giving tools to AI**. Think of USB. The spec is the same everywhere, so it plugs into any AI app.
 
-**WARUDO Agent Bridge** is a set of MCP tools for WARUDO. Once installed, the AI gets 82 tools: "move camera", "change expression", "set pose", "take photo" and more.
+**WARUDO Agent Bridge** is a set of MCP tools for WARUDO. Once installed, the AI gets 86 tools: "move camera", "change expression", "set pose", "take photo" and more.
 
 ```
 you (ask in chat)
@@ -142,7 +142,7 @@ Poses work by saying which way to aim body parts. The bridge prevents impossible
 | "Change this node value in the blueprint." | `warudo_blueprint_get` → `warudo_node_patch` |
 | "Click the Apply button in WARUDO's panel while I keep working in another window." | `warudo_ui_list` → `warudo_ui_click` |
 
-All 82 tools are in [docs/TOOLS.md](docs/TOOLS.md).
+All 86 tools are in [docs/TOOLS.md](docs/TOOLS.md).
 
 **Tips for good requests**
 
@@ -410,6 +410,7 @@ Screenshots are for agents, so each tool makes one kind of information easy to t
 - `warudo_screen_diff`: the window now against an earlier capture (`baseline` = the path a capture tool returned): unchanged pixels greyed, changed pixels in color, boxes numbered, mean color before and after per box.
 - `warudo_screen_probe`: text only. Mean, median, HSV, luminance, min and max RGB at points and regions, for comparing colors without reading pixels off a picture.
 - `warudo_screen_sequence`: 2 to 16 frames, one every K rendered frames, as one numbered contact sheet, with how much each frame changed from the one before (hover, animation and flicker checks).
+- `warudo_ui_language`: switches the language WARUDO plugins read (`en`, `ja`, `ko`, `zh_CN` and the other codes WARUDO has strings for), so a plugin menu can be captured in each language without opening WARUDO's settings. Nothing is saved to disk. `restore: true` puts back the language from before the first change, and the bridge does it by itself when the write lease ends, on `warudo_pointer_release`, and when the bridge stops, unless you picked another language in WARUDO meanwhile. It is refused with `SCENE_LOADING` while a scene loads. Feature `ui-language`.
 - **Click where you see it.** Pass `space: "image"` (and optionally `imageId`; default the latest image of this MCP server, which keeps the last 32) to a pointer tool, `warudo_ui_at`, or the `region`/`points` of a capture tool, and x/y are pixels of the image you were shown. The server converts them to window pixels; points outside the image, outside the AFTER panel of a before/after sheet, or on a contact sheet are refused.
 - **Needs this version of the runtime** (feature `capture-tools`). `npm run check:pixels` runs the pixel math (crop, downscale, diff boxes, color statistics) under plain .NET with a UnityEngine stub; it needs the same .NET SDK and WARUDO files as `npm run check:runtime`.
 

@@ -24,7 +24,7 @@ namespace StudioRaming.WarudoAgentBridge
     {
         const string Version = "0.2.0";
         const int Protocol = 2;
-        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings", "pointer", "capture-tools", "character-shot", "render-passes" };
+        static readonly string[] Features = { "claim", "stopped-marker", "entity-paths", "resources", "character", "pose", "ik", "blueprint", "maintenance", "analysis-render", "plugin-settings", "pointer", "capture-tools", "character-shot", "render-passes", "ui-language" };
 
         string home, root, session, leaseOwner, activeRequest;
         DateTime leaseUntil;
@@ -59,6 +59,7 @@ namespace StudioRaming.WarudoAgentBridge
             session = Guid.NewGuid().ToString("N");
             LoadConfig();
             LoadPoseState();
+            ResumeLanguageState();
             RestoreLease();
             Application.logMessageReceivedThreaded += ReceiveLog;
             RecoverInterruptedRequests();
@@ -75,6 +76,7 @@ namespace StudioRaming.WarudoAgentBridge
             Application.logMessageReceivedThreaded -= ReceiveLog;
             ReleaseCharacterOverrides();
             DestroyPointer();
+            try { RestoreLanguage("bridge stopped"); } catch (Exception) { }
             PersistLease();
             try { AtomicWrite(Path.Combine(root, "state.json"), Status(true).ToString(Formatting.None)); } catch (Exception) { }
             base.OnDestroy();
@@ -96,6 +98,7 @@ namespace StudioRaming.WarudoAgentBridge
                 ScheduleMaintenance();
             }
             PointerTick();
+            LanguageTick();
             if (busy || now < nextRequest) return;
             nextRequest = now + .05f;
             string path;
@@ -363,6 +366,8 @@ namespace StudioRaming.WarudoAgentBridge
                 case "ui.at":
                 case "ui.set_text":
                     return UiOperation(op, p);
+                case "ui.language":
+                    return UiLanguage(p, owner);
                 case "ui.capture":
                     return await UiCapture(p);
                 case "screen.diff":
