@@ -113,7 +113,7 @@ namespace StudioRaming.WarudoAgentBridge
             float aspect = aspectParameter ?? (portraitDefault ? 0.75f : mainAspect);
             string aspectSource = aspectParameter.HasValue ? "aspect parameter" : portraitDefault ? "default portrait 3:4 for framing " + framing : "main camera";
 
-            ShotFrame(subject, framing);
+            ShotFrame(subject, framing, aspect);
             int columns = plans.Count <= 3 ? plans.Count : plans.Count <= 4 ? 2 : 3, rows = (plans.Count + columns - 1) / columns;
             int panelWidth = Math.Max(128, (int)(size / Math.Max(columns, rows / aspect)));
             int panelHeight = Math.Max(72, (int)Math.Round(panelWidth / aspect));
@@ -345,7 +345,7 @@ namespace StudioRaming.WarudoAgentBridge
 
         // The box that must fit the frame, from the humanoid bones whenever the avatar has them (Hips, Chest, shoulders, Head, feet),
         // the renderer vertex bounds only for the height and when there are no bones. boneReport says what was found, as shares of the body height.
-        static void ShotFrame(ShotSubject s, string framing)
+        static void ShotFrame(ShotSubject s, string framing, float aspect)
         {
             Vector3 forward = s.Animator != null ? s.Animator.transform.forward : s.Asset.GameObject.transform.forward;
             forward.y = 0;
@@ -424,13 +424,13 @@ namespace StudioRaming.WarudoAgentBridge
                 if (framing == "upper")
                 {
                     yMin = waistY; if (standing) yMin = Math.Max(yMin, feetY + 0.50f * height);
-                    halfWidth = Math.Max(0.20f * height, shoulderSpan / 2f + 0.07f * height); halfDepth = 0.15f * height;
+                    halfWidth = ShotMath.TorsoHalfWidth(shoulderSpan, height, (yMax - yMin) / 2f, aspect, 0.03f, 0.12f); halfDepth = 0.15f * height;
                     anchor = (hipsPosition + headPosition) * 0.5f;
                 }
                 else if (framing == "bust")
                 {
                     yMin = shoulderY - 0.07f * height; if (standing) yMin = Math.Max(yMin, feetY + 0.68f * height);
-                    halfWidth = Math.Max(0.14f * height, shoulderSpan / 2f + 0.04f * height); halfDepth = 0.12f * height; anchor = headPosition;
+                    halfWidth = ShotMath.TorsoHalfWidth(shoulderSpan, height, (yMax - yMin) / 2f, aspect, 0.02f, 0.10f); halfDepth = 0.12f * height; anchor = headPosition;
                 }
                 else
                 {
@@ -447,8 +447,7 @@ namespace StudioRaming.WarudoAgentBridge
                 anchor = center;
                 halfWidth = Math.Min((max.X - min.X) / 2f, (framing == "upper" ? 0.30f : framing == "bust" ? 0.20f : 0.09f) * height); halfDepth = Math.Min((max.Z - min.Z) / 2f, 0.15f * height);
             }
-            s.Center = new V3(anchor.X, (yMin + yMax) / 2f, anchor.Z);
-            s.Corners = ShotMath.BoxCorners(s.Center, s.Right, up, s.Forward, halfWidth, (yMax - yMin) / 2f, halfDepth);
+            ShotMath.FramedBox(anchor, yMin, yMax, s.Right, s.Forward, halfWidth, halfDepth, out s.Center, out s.Corners);
         }
 
 

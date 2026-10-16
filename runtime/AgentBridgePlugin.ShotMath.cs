@@ -119,6 +119,23 @@ namespace StudioRaming.WarudoAgentBridge
             return corners;
         }
 
+        // Half the width of the body box of a framing that cuts the body (upper, bust): the shoulders plus a small margin, never
+        // wider than the frame shape allows (halfHeight * aspect), so the frame is limited by the height of the box and the head
+        // does not sit low with empty space above it. The shoulders themselves are always kept; the arms may be cropped.
+        public static float TorsoHalfWidth(float shoulderSpan, float bodyHeight, float halfHeight, float aspect, float marginShare, float minShare)
+        {
+            float wanted = Math.Max(minShare * bodyHeight, shoulderSpan / 2f + marginShare * bodyHeight);
+            return Math.Max(shoulderSpan / 2f + 0.01f * bodyHeight, Math.Min(wanted, halfHeight * aspect));
+        }
+
+        // The box a cut framing aims at and fits: the look-at point is the center of the box (vertically the middle of yMin..yMax),
+        // so the distance fit leaves the same margin above and below.
+        public static void FramedBox(V3 anchor, float yMin, float yMax, V3 right, V3 forward, float halfWidth, float halfDepth, out V3 center, out V3[] corners)
+        {
+            center = new V3(anchor.X, (yMin + yMax) / 2f, anchor.Z);
+            corners = BoxCorners(center, right, new V3(0, 1, 0), forward, halfWidth, (yMax - yMin) / 2f, halfDepth);
+        }
+
         // Smallest distance from the pivot, along dirToCamera, at which every corner stays inside fit (0..1) of the frame
         // height and of the frame width (aspect = width / height) for a vertical field of view of fovDeg.
         public static float FitDistance(V3 pivot, V3[] corners, V3 dirToCamera, float fovDeg, float aspect, float fit, float minimum)
