@@ -40,7 +40,7 @@ namespace StudioRaming.WarudoAgentBridge
             public V3 Forward, Right;
             public V3 Center;
             public V3[] Corners;
-            public string BoxSource;
+            public string BoxSource, BoneReport;
             public float BodyHeight;
         }
 
@@ -184,7 +184,7 @@ namespace StudioRaming.WarudoAgentBridge
                 path, width, height, layout = columns + " x " + rows + " grid, left to right then top to bottom",
                 subject = new { assetId = subject.Asset.Id.ToString(), name = subject.Asset.Name },
                 otherCharacters = choice.Others.Select(c => new { assetId = c.Id, name = c.Name, enabled = c.Enabled, loaded = c.Loaded }).ToArray(),
-                aspect = Round(aspect), aspectSource, framing, framingSource = subject.BoxSource, pivot = Wire(Unity(subject.Center)), bodyHeight = Round(subject.BodyHeight),
+                aspect = Round(aspect), aspectSource, framing, framingSource = subject.BoxSource, boneReport = subject.BoneReport, pivot = Wire(Unity(subject.Center)), bodyHeight = Round(subject.BodyHeight),
                 fieldOfView = Round(fov, 1), fit, background, views,
                 renderers = subject.Used, skippedRenderers = subject.Skipped, warnings,
                 mainCameraMoved = false, sceneChanged = false,
@@ -275,7 +275,9 @@ namespace StudioRaming.WarudoAgentBridge
             if (!character.Enabled || !character.GameObject.activeInHierarchy)
                 throw new InvalidOperationException("CHARACTER_DISABLED: " + character.Name + " (" + character.Id + ") exists and is loaded, but the asset is disabled. Enable it with warudo_asset_enabled (assetId, enabled=true), shoot, and restore." + others);
 
-            var subject = new ShotSubject { Asset = character, Animator = character.Animator };
+            Animator animator = character.Animator;
+            if (animator == null || !animator.isHuman) animator = character.GameObject.GetComponentsInChildren<Animator>(true).FirstOrDefault(x => x.isHuman) ?? animator;
+            var subject = new ShotSubject { Asset = character, Animator = animator };
             Transform root = character.GameObject.transform;
             bool any = false;
             Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue), max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
@@ -326,7 +328,23 @@ namespace StudioRaming.WarudoAgentBridge
             min = Vector3.Min(min, v); max = Vector3.Max(max, v);
         }
 
-        // The box that must fit the frame: the whole renderer bounds, or a part of the body cut from humanoid bones.
+        // A humanoid bone of the subject: the Animator's avatar first, then WARUDO's own bone lookup.
+        static Transform ShotBone(ShotSubject s, HumanBodyBones id)
+        {
+            Transform t = null;
+            if (s.Animator != null && s.Animator.isHuman)
+            {
+                try { t = s.Animator.GetBoneTransform(id); } catch (Exception) { }
+            }
+            if (t == null && s.Asset != null)
+            {
+                try { t = s.Asset.GetBoneTransform(id, CharacterBoneLayer.Raw); } catch (Exception) { }
+            }
+            return t;
+        }
+
+        // The box that must fit the frame, from the humanoid bones whenever the avatar has them (Hips, Chest, shoulders, Head, feet),
+        // the renderer vertex bounds only for the height and when there are no bones. boneReport says what was found, as shares of the body height.
         static void ShotFrame(ShotSubject s, string framing)
         {
             Vector3 forward = s.Animator != null ? s.Animator.transform.forward : s.Asset.GameObject.transform.forward;
@@ -337,42 +355,49 @@ namespace StudioRaming.WarudoAgentBridge
             V3 up = new V3(0, 1, 0);
             V3 min = Math3(s.Min), max = Math3(s.Max);
             V3 center = (min + max) * 0.5f;
-            Animator a = s.Animator != null && s.Animator.isHuman ? s.Animator : null;
-            Transform hips = a == null ? null : a.GetBoneTransform(HumanBodyBones.Hips), head = a == null ? null : a.GetBoneTransform(HumanBodyBones.Head);
-            Transform chest = a == null ? null : (a.GetBoneTransform(HumanBodyBones.UpperChest) ?? a.GetBoneTransform(HumanBodyBones.Chest) ?? a.GetBoneTransform(HumanBodyBones.Spine));
+            Transform hips = ShotBone(s, HumanBodyBones.Hips), head = ShotBone(s, HumanBodyBones.Head);
+            Transform chest = ShotBone(s, HumanBodyBones.UpperChest) ?? ShotBone(s, HumanBodyBones.Chest) ?? ShotBone(s, HumanBodyBones.Spine);
+            Transform leftArm = ShotBone(s, HumanBodyBones.LeftUpperArm), rightArm = ShotBone(s, HumanBodyBones.RightUpperArm), neck = ShotBone(s, HumanBodyBones.Neck);
             float feetY = min.Y;
-            if (a != null)
-                foreach (HumanBodyBones foot in new[] { HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot })
-                {
-                    Transform t = a.GetBoneTransform(foot);
-                    if (t != null) feetY = Math.Min(feetY, t.position.y);
-                }
-            float height = Math.Max(0.3f, max.Y - feetY);
+            foreach (HumanBodyBones foot in new[] { HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot })
+            {
+                Transform t = ShotBone(s, foot);
+                if (t != null) feetY = Math.Min(feetY, t.position.y);
+            }
+            float top = max.Y;
+            float height = Math.Max(0.3f, top - feetY);
             s.BodyHeight = height;
+            bool bones = hips != null && head != null;
+            string why = bones ? null : s.Animator == null ? "the character has no Animator" : !s.Animator.isHuman ? "its Animator has no humanoid avatar" : "the humanoid avatar has no Hips or Head bone";
+            if (bones)
+            {
+                Func<Transform, string> share = t => t == null ? "none" : ((t.position.y - feetY) / height).ToString("F2");
+                s.BoneReport = "shares of the body height above the feet: hips " + share(hips) + ", chest " + share(chest) + ", shoulders " + share(leftArm) + ", neck " + share(neck) + ", head " + share(head) + ", top of mesh 1.00";
+            }
+
             if (framing == "full")
             {
                 float fullY = (min.Y + max.Y) / 2f, halfHeight = (max.Y - min.Y) / 2f;
                 float vertexHalf = Math.Max(max.X - min.X, max.Z - min.Z) / 2f; // rotation-agnostic upper bound from the vertex bounds
-                if (a != null && hips != null && head != null)
+                if (bones)
                 {
                     // Height from the vertex bounds (hair, ears and soles included); horizontal extent from where the bones are,
                     // so a stray accessory or far physics bone does not widen the frame. The silhouette check then confirms it.
-                    var bones = new List<V3> { Math3(hips.position), Math3(head.position) };
+                    var points = new List<V3> { Math3(hips.position), Math3(head.position) };
                     foreach (HumanBodyBones bone in new[] { HumanBodyBones.LeftHand, HumanBodyBones.RightHand, HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot })
                     {
-                        Transform t = a.GetBoneTransform(bone);
-                        if (t != null) bones.Add(Math3(t.position));
+                        Transform t = ShotBone(s, bone);
+                        if (t != null) points.Add(Math3(t.position));
                     }
                     float r0 = float.MaxValue, r1 = float.MinValue, f0 = float.MaxValue, f1 = float.MinValue;
-                    foreach (V3 point in bones)
+                    foreach (V3 point in points)
                     {
                         float r = V3.Dot(point, s.Right), fw = V3.Dot(point, s.Forward);
                         r0 = Math.Min(r0, r); r1 = Math.Max(r1, r); f0 = Math.Min(f0, fw); f1 = Math.Max(f1, fw);
                     }
                     float halfWidthFull = Math.Min(vertexHalf, Math.Max(0.2f * height, (r1 - r0) / 2f + 0.08f * height));
                     float halfDepthFull = Math.Min(vertexHalf, Math.Max(0.12f * height, (f1 - f0) / 2f + 0.10f * height));
-                    float rc = (r0 + r1) / 2f, fc = (f0 + f1) / 2f;
-                    V3 horizontal = s.Right * rc + s.Forward * fc;
+                    V3 horizontal = s.Right * ((r0 + r1) / 2f) + s.Forward * ((f0 + f1) / 2f);
                     s.Center = new V3(horizontal.X, fullY, horizontal.Z);
                     s.Corners = ShotMath.BoxCorners(s.Center, s.Right, up, s.Forward, halfWidthFull, halfHeight, halfDepthFull);
                     s.BoxSource = "humanoid bones (width and depth) and renderer vertex bounds (height)";
@@ -380,37 +405,52 @@ namespace StudioRaming.WarudoAgentBridge
                 }
                 s.Center = center;
                 s.Corners = ShotMath.BoxCorners(center, new V3(1, 0, 0), up, new V3(0, 0, 1), (max.X - min.X) / 2f, halfHeight, (max.Z - min.Z) / 2f);
-                s.BoxSource = "renderer vertex bounds (" + (s.Animator == null ? "the character has no Animator" : !s.Animator.isHuman ? "its Animator has no humanoid avatar" : "the humanoid avatar has no Hips or Head bone") + ")";
+                s.BoxSource = "renderer vertex bounds (" + why + ")";
                 return;
             }
-            float yMin, yMax, halfWidth, halfDepth;
+
+            float yMin, yMax = top, halfWidth, halfDepth;
             V3 anchor; // horizontal position of the box
-            if (hips != null && head != null)
+            if (bones)
             {
                 s.BoxSource = "humanoid bones";
                 V3 hipsPosition = Math3(hips.position), headPosition = Math3(head.position);
-                anchor = (hipsPosition + headPosition) * 0.5f;
-                float top = max.Y;
-                if (framing == "upper") { yMin = hipsPosition.Y; yMax = top; halfWidth = 0.30f * height; halfDepth = 0.20f * height; }
-                else if (framing == "bust") { yMin = (chest != null ? chest.position.y : hipsPosition.Y) - 0.10f * height; yMax = top; halfWidth = 0.22f * height; halfDepth = 0.15f * height; anchor = headPosition; }
+                // Standing: the head is well above the hips. Then the box can never reach below the proportions of a body (waist 0.50,
+                // shoulders 0.68 of the height), so an odd bone placement cannot frame the legs.
+                bool standing = headPosition.Y - hipsPosition.Y > 0.15f * height;
+                float shoulderY = leftArm != null && rightArm != null ? (leftArm.position.y + rightArm.position.y) / 2f : neck != null ? neck.position.y : chest != null ? chest.position.y : feetY + 0.8f * height;
+                float shoulderSpan = leftArm != null && rightArm != null ? Math.Abs(V3.Dot(Math3(leftArm.position) - Math3(rightArm.position), s.Right)) : 0.25f * height;
+                float waistY = chest != null ? (hipsPosition.Y + chest.position.y) / 2f : hipsPosition.Y + 0.1f * height;
+                if (framing == "upper")
+                {
+                    yMin = waistY; if (standing) yMin = Math.Max(yMin, feetY + 0.50f * height);
+                    halfWidth = Math.Max(0.20f * height, shoulderSpan / 2f + 0.07f * height); halfDepth = 0.15f * height;
+                    anchor = (hipsPosition + headPosition) * 0.5f;
+                }
+                else if (framing == "bust")
+                {
+                    yMin = shoulderY - 0.07f * height; if (standing) yMin = Math.Max(yMin, feetY + 0.68f * height);
+                    halfWidth = Math.Max(0.14f * height, shoulderSpan / 2f + 0.04f * height); halfDepth = 0.12f * height; anchor = headPosition;
+                }
                 else
                 {
-                    Transform left = a.GetBoneTransform(HumanBodyBones.LeftEye), right = a.GetBoneTransform(HumanBodyBones.RightEye);
+                    Transform left = ShotBone(s, HumanBodyBones.LeftEye), right = ShotBone(s, HumanBodyBones.RightEye);
                     float eyeY = left != null && right != null ? (left.position.y + right.position.y) / 2f : head.position.y + 0.05f * height;
                     yMin = eyeY - 0.075f * height; yMax = eyeY + 0.085f * height; halfWidth = 0.08f * height; halfDepth = 0.08f * height; anchor = headPosition;
                 }
             }
             else
             {
-                s.BoxSource = "renderer vertex bounds (no humanoid bones): top " + (framing == "upper" ? "55" : framing == "bust" ? "40" : "14") + " % of the height";
-                float share = framing == "upper" ? 0.55f : framing == "bust" ? 0.40f : 0.14f;
-                yMax = max.Y; yMin = max.Y - share * (max.Y - min.Y);
+                float share = framing == "upper" ? 0.45f : framing == "bust" ? 0.25f : 0.13f;
+                s.BoxSource = "renderer vertex bounds (" + why + "): top " + (int)Math.Round(share * 100) + " % of the height";
+                yMin = max.Y - share * (max.Y - min.Y);
                 anchor = center;
-                halfWidth = Math.Min((max.X - min.X) / 2f, 0.30f * height); halfDepth = Math.Min((max.Z - min.Z) / 2f, 0.20f * height);
+                halfWidth = Math.Min((max.X - min.X) / 2f, (framing == "upper" ? 0.30f : framing == "bust" ? 0.20f : 0.09f) * height); halfDepth = Math.Min((max.Z - min.Z) / 2f, 0.15f * height);
             }
             s.Center = new V3(anchor.X, (yMin + yMax) / 2f, anchor.Z);
             s.Corners = ShotMath.BoxCorners(s.Center, s.Right, up, s.Forward, halfWidth, (yMax - yMin) / 2f, halfDepth);
         }
+
 
         // One camera pose on the orbit and its visibility proof (low-resolution renders, nothing is kept).
         ShotAttempt ShotEvaluate(OffscreenCamera camera, ShotSubject s, ShotPlan plan, float distanceScale, float fov, float aspect, float fit, int proofWidth, int proofHeight)
