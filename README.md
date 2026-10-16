@@ -36,7 +36,7 @@ ChatGPT and Claude can normally **only chat in text**. They cannot click buttons
 
 **MCP** (Model Context Protocol) is a **common spec for giving tools to AI**. Think of USB. The spec is the same everywhere, so it plugs into any AI app.
 
-**WARUDO Agent Bridge** is a set of MCP tools for WARUDO. Once installed, the AI gets 78 tools: "move camera", "change expression", "set pose", "take photo" and more.
+**WARUDO Agent Bridge** is a set of MCP tools for WARUDO. Once installed, the AI gets 82 tools: "move camera", "change expression", "set pose", "take photo" and more.
 
 ```
 you (ask in chat)
@@ -142,7 +142,7 @@ Poses work by saying which way to aim body parts. The bridge prevents impossible
 | "Change this node value in the blueprint." | `warudo_blueprint_get` → `warudo_node_patch` |
 | "Click the Apply button in WARUDO's panel while I keep working in another window." | `warudo_ui_list` → `warudo_ui_click` |
 
-All 78 tools are in [docs/TOOLS.md](docs/TOOLS.md).
+All 82 tools are in [docs/TOOLS.md](docs/TOOLS.md).
 
 **Tips for good requests**
 
@@ -396,6 +396,19 @@ bool virtualInput = module?.inputOverride != null; // treat as focused: do not r
 // Keys and modifiers: input has public bool GetKey/GetKeyDown/GetKeyUp(KeyCode) when virtual; find them by name (reflection or dynamic).
 // Otherwise (inputOverride == null) read the real UnityEngine.Input as before.
 ```
+
+### Captures that are easy to read
+
+Screenshots are for agents, so each tool makes one kind of information easy to tell apart. Every image tool returns the PNG, its numbers as text, and an `imageId` with a mapping (which window area the image shows and how it was scaled).
+
+- `warudo_screen_capture`: the window, fitted to `maxSize` (default 1600). `region` [x, y, w, h] or `around` { objectId | path } (a UI object, plugin overlay panels included, or a renderer) crops at full resolution first, so small text stays readable. `grid` overlays a coordinate grid labeled in window pixels.
+- `warudo_ui_capture`: the same screenshot with a numbered box over every control `warudo_ui_list` returns, colored by kind (button, toggle, slider, input, scroll), plus the legend as text. `warudo_ui_click` then takes `mark` (the number; refused with `MARK_STALE` if the controls changed) or `near` (the visible text, exact first, then contains).
+- Gesture captures (`capture: true` on any pointer tool or `warudo_ui_click`): the pointer is drawn on the image (press, release, drag path; `markPointer`). `captureBefore: true` returns BEFORE and AFTER side by side in one PNG, with the changed regions boxed on AFTER and the diff numbers.
+- `warudo_screen_diff`: the window now against an earlier capture (`baseline` = the path a capture tool returned): unchanged pixels greyed, changed pixels in color, boxes numbered, mean color before and after per box.
+- `warudo_screen_probe`: text only. Mean, median, HSV, luminance, min and max RGB at points and regions, for comparing colors without reading pixels off a picture.
+- `warudo_screen_sequence`: 2 to 16 frames, one every K rendered frames, as one numbered contact sheet, with how much each frame changed from the one before (hover, animation and flicker checks).
+- **Click where you see it.** Pass `space: "image"` (and optionally `imageId`; default the latest image of this MCP server, which keeps the last 32) to a pointer tool, `warudo_ui_at`, or the `region`/`points` of a capture tool, and x/y are pixels of the image you were shown. The server converts them to window pixels; points outside the image, outside the AFTER panel of a before/after sheet, or on a contact sheet are refused.
+- **Needs this version of the runtime** (feature `capture-tools`). `npm run check:pixels` runs the pixel math (crop, downscale, diff boxes, color statistics) under plain .NET with a UnityEngine stub; it needs the same .NET SDK and WARUDO files as `npm run check:runtime`.
 
 ### Configuration
 

@@ -65,7 +65,7 @@ function render() {
       const how = tool.local === 'waitLoaded' ? `${tool.operation}, polled by the MCP server`
         : tool.local === 'uiClick' ? `${tool.operation}, after the MCP server finds the element with ui.list`
           : tool.plan ? `${tool.operation}, with a frame timeline the MCP server builds from the arguments` : tool.operation;
-      lines.push(`Kind: \`${tool.kind}\` (${KIND[tool.kind]}). Runtime operation: \`${how}\`.${tool.requires ? ` Needs runtime feature \`${tool.requires}\`.` : ''}`, '');
+      lines.push(`Kind: \`${tool.kind}\` (${KIND[tool.kind]}). Runtime operation: \`${how}\`.${tool.requires ? ` Needs runtime feature \`${tool.requires}\`.` : ''}${tool.requiresCapture ? ' Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.' : ''}`, '');
       const properties = Object.entries(tool.inputSchema.properties || {});
       if (properties.length) {
         const required = new Set(tool.inputSchema.required || []);

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Captures that are easy to read (Tools: 82)
+- `warudo_screen_capture` gains `region` / `around` + `padding` (crop at full resolution, then fit), `maxSize` (default 1600, 256..4096; the image is never enlarged) and `grid` / `gridStep` (coordinate grid labeled in window pixels). The reply returns the crop used, an image mapping and an `imageId`.
+- New: `warudo_ui_capture` (numbered, kind-colored boxes over every `warudo_ui_list` control, legend as text), `warudo_screen_diff` (greyed unchanged pixels, numbered boxes with mean color before/after, `baseline` confined to the evidence folder), `warudo_screen_probe` (mean, median, HSV, luminance, min, max at points and regions, text only) and `warudo_screen_sequence` (contact sheet with per-frame changed fraction).
+- Gesture captures mark the pointer (press, release, drag path; `markPointer`), and `captureBefore` returns BEFORE and AFTER side by side with the diff numbers. `warudo_ui_click` takes `near` (exact text first, then contains) and `mark` (number from the latest `warudo_ui_capture`, re-checked first, `MARK_STALE` when the screen changed). `warudo_ui_list` takes `region` and returns each control's `kind`.
+- Click where the image shows: pointer tools, `warudo_ui_at` and the capture tools accept `space: "image"` with an optional `imageId` (the MCP server keeps the last 32 images); coordinates outside the image, outside the AFTER panel, or on a contact sheet are refused.
+- The runtime reports the `capture-tools` feature; capture options sent to an older runtime answer `RUNTIME_OUTDATED` instead of being ignored. `npm run check:pixels` checks the pixel math under plain .NET.
+- Default `maxSize` 1600 also applies to `warudo_screen_capture` without options: a 2560x1440 window now comes back at 1600x900 (pass `maxSize: 4096` for full resolution).
+
 ### Virtual pointer (Tools: 78)
 - Agents can click, double click, drag, hover and scroll in WARUDO's main window without bringing it to the front and without any OS input: `warudo_pointer_click`, `warudo_pointer_drag`, `warudo_pointer_move`, `warudo_pointer_button`, `warudo_pointer_wheel`, `warudo_pointer_release`, `warudo_pointer_state`, `warudo_key_virtual`.
 - `warudo_ui_list` (what reacts to the pointer, with window-pixel rectangles), `warudo_ui_at` (what is under a point), `warudo_ui_click` (by id or label; a covered control fails with `COVERED` instead of clicking what is on top) and `warudo_ui_set_text` (InputField and TMP_InputField).

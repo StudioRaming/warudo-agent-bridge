@@ -742,7 +742,7 @@ Kind: `read` (read-only). Runtime operation: `analysis.capture`.
 
 Capture the final WARUDO frame including screen-space UI and return the PNG, fitted to maxSize (default 1600, so a 2560x1440 window comes back at 1600x900; maxSize 4096 keeps full resolution). Zoom with region or around (cropped at full resolution first, so small text stays readable) and add grid to read coordinates off the image. The reply lists the crop used, the numbers of the image mapping and an imageId. The reply carries an imageId and a mapping; to click where you see something in the image you received, pass space="image" with x/y of that image to a pointer tool.
 
-Kind: `read` (read-only). Runtime operation: `screen.capture`.
+Kind: `read` (read-only). Runtime operation: `screen.capture`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -958,7 +958,7 @@ Kind: `read` (read-only). Runtime operation: `render.globals`.
 
 Click (or double click) at a point of the WARUDO main window with a virtual mouse, without bringing WARUDO to the front. The click is played into WARUDO's UI for a few frames through Unity's input module; no OS input is sent. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId. Find the point with warudo_ui_list or warudo_ui_at, or use warudo_ui_click for a control you know by its label. The reply says what was under the pointer at press and release and which object received the click. A double click needs about 15 frames per second or more to count as one.
 
-Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
+Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -986,7 +986,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 
 Press at the first point, move along the path one small step per frame, and release on the last point, with the virtual mouse. For sliders, scroll bars, sorting and window resizing. Give frames per segment or totalFrames for the whole path. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId. The gesture is limited to 600 frames and 64 points.
 
-Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
+Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1013,7 +1013,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 
 Move the virtual mouse to a point and hold it there without pressing, for hover outlines, tooltips and mouse-over effects. keep=true leaves the virtual pointer parked there after the reply (it is released by warudo_pointer_release, the next pointer call, the lease ending, or after pointer.idleReleaseMs of no use). It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId.
 
-Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
+Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1038,7 +1038,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 
 Press (down) or release (up) one mouse button, optionally at x and y first, for gestures made of several calls: button down, a few warudo_pointer_move calls with keep, button up. A button left down keeps the virtual pointer parked until the matching up, a warudo_pointer_release, the lease ending, or pointer.idleReleaseMs of no use. Modifiers are held only during this call. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId.
 
-Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
+Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1065,7 +1065,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 
 Turn the virtual mouse wheel over a point: positive notches scroll up, negative down, at most 20, spread over frames. For scroll lists and panels. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId.
 
-Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`.
+Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1119,7 +1119,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 
 List the active, visible controls of the WARUDO main window that react to the pointer (buttons, sliders, toggles, scroll areas and anything with a click, press, drag or scroll handler), frontmost canvas first. Each has an id, path, handler types, label (first text in it), rectangle [x, y, width, height] and center in window pixels, its kind (button, toggle, slider, input, scroll or other), whether it is interactable and on screen, and hidden=true when its canvas object carries HideFlags (a plugin overlay such as a Color Studio panel). region keeps the controls that overlap a window rectangle. Use the center with warudo_pointer_click, or warudo_ui_click to click one by label.
 
-Kind: `read` (read-only). Runtime operation: `ui.list`. Needs runtime feature `pointer`.
+Kind: `read` (read-only). Runtime operation: `ui.list`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1149,7 +1149,7 @@ Kind: `read` (read-only). Runtime operation: `ui.at`. Needs runtime feature `poi
 
 Click a control of the WARUDO main window with the virtual mouse, at the center of its rectangle. Name it by near (the visible text, exact match first, then contains; the preferred way, it also finds plugin overlay panels such as Color Studio), by mark (the number printed on the latest warudo_ui_capture image, refused with MARK_STALE when the controls on screen changed since), by label (contains, or labelMatch) or by id from warudo_ui_list. If another object covers the control the click is not sent and the reply is COVERED, so it never clicks whatever is on top. An ambiguous text needs index. capture=true returns the image with the pointer marked. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly.
 
-Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, after the MCP server finds the element with ui.list`. Needs runtime feature `pointer`.
+Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, after the MCP server finds the element with ui.list`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |

@@ -30,6 +30,7 @@
   "scripts": {
     "test": "node --test",
     "check:runtime": "node scripts/compile-runtime.mjs",
+    "check:pixels": "node scripts/check-pixel-math.mjs",
     "docs:tools": "node scripts/gen-tools-doc.mjs",
     "docs:check": "node scripts/gen-tools-doc.mjs --check"
   },
