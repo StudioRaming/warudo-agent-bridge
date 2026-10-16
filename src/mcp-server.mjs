@@ -103,8 +103,8 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
   // Finds the control with ui.list, then clicks the middle of its rectangle through the same pointer timeline.
   // expectObject makes the runtime stop with COVERED instead of clicking whatever is on top of it.
   async function uiClick(tool, args) {
-    const { id, label, near, mark, labelMatch, index } = args;
-    if ([id, label, near, mark].filter((value) => value !== undefined).length !== 1) throw new BridgeError('INVALID_ARGUMENT', 'Pass exactly one of near, label, id or mark.');
+    const { id, label, near, mark, path, labelMatch, index } = args;
+    if ([id, label, near, mark, path].filter((value) => value !== undefined).length !== 1) throw new BridgeError('INVALID_ARGUMENT', 'Pass exactly one of near, label, id, mark or path.');
     let target;
     let screen;
     if (mark !== undefined) {
@@ -116,8 +116,9 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
     } else {
       // near is the preferred way: the visible text, exact first, then contains.
       const text = near ?? label;
-      const wanted = id === undefined ? { label: text, labelMatch: labelMatch ?? (near !== undefined ? 'auto' : 'contains') } : { id };
-      const listed = await operation('ui.list', { ...(id !== undefined ? { id } : { query: text }), interactableOnly: false, limit: 500 }, true);
+      // path names an element by its hierarchy path (an icon button has no text); ui.list's query already matches label or path.
+      const wanted = id !== undefined ? { id } : path !== undefined ? { path } : { label: text, labelMatch: labelMatch ?? (near !== undefined ? 'auto' : 'contains') };
+      const listed = await operation('ui.list', { ...(id !== undefined ? { id } : { query: path ?? text }), interactableOnly: false, limit: 500 }, true);
       target = resolveUiTarget(listed.items ?? [], { ...wanted, index }, { truncated: listed.truncated === true });
       screen = listed.screen;
     }
@@ -163,6 +164,7 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
       validateRenderArgs(name, callArgs);
       if (tool.requires) await requireFeature(tool.requires);
       if (tool.requiresCapture && captureOptionsUsed(callArgs)) await requireFeature('capture-tools');
+      if (tool.requiresWhen && tool.requiresWhen.args.some((key) => callArgs[key] !== undefined && callArgs[key] !== false)) await requireFeature(tool.requiresWhen.feature);
       if (tool.local === 'waitLoaded') data = await waitLoaded(callArgs);
       else if (tool.local === 'uiClick') data = await uiClick(tool, callArgs);
       else data = await callRuntime(tool, tool.plan ? buildPointerPlan(tool.plan, callArgs) : callArgs);

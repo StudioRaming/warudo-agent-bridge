@@ -234,3 +234,33 @@ test('the longest gesture still fits in one mailbox request', () => {
   const request = JSON.stringify({ protocol: 2, requestId: 'x'.repeat(32), sessionId: 'x'.repeat(32), createdUtc: new Date().toISOString(), owner: 'o'.repeat(128), operation: 'pointer.play', params: plan });
   assert.ok(Buffer.byteLength(request) < MAX_REQUEST_BYTES / 2, `${Buffer.byteLength(request)} bytes`);
 });
+
+test('ui target by path finds an icon button that has no text, with the same usable-match and index rules', () => {
+  const items = [
+    item({ id: 1, path: 'Canvas/Menu/btn:menu.undo', label: '' }),
+    item({ id: 2, path: 'Canvas/Menu/btn:menu.redo', label: null }),
+    item({ id: 3, path: 'Canvas/Panel/btn:menu.undo', label: '', interactable: false }),
+    item({ id: 4, path: 'Canvas/Other/Row1', label: 'Row' }),
+    item({ id: 5, path: 'Canvas/Other/Row2', label: 'Row' }),
+  ];
+  assert.equal(resolveUiTarget(items, { path: 'btn:menu.undo' }).id, 1, 'the disabled twin never wins');
+  assert.equal(resolveUiTarget(items, { path: ' BTN:MENU.REDO ' }).id, 2, 'case-insensitive and trimmed');
+  fails(() => resolveUiTarget(items, { path: 'btn:menu.nothing' }), 'UI_NOT_FOUND');
+  assert.throws(() => resolveUiTarget(items, { path: 'canvas/other/row' }), (error) => error.code === 'UI_AMBIGUOUS' && error.details.candidates.length === 2);
+  assert.equal(resolveUiTarget(items, { path: 'canvas/other/row', index: 1 }).id, 5);
+  fails(() => resolveUiTarget([items[2]], { path: 'btn:menu.undo' }), 'UI_NOT_CLICKABLE');
+  fails(() => resolveUiTarget(items, { path: 'btn', label: 'Apply' }), 'INVALID_ARGUMENT');
+  fails(() => resolveUiTarget(items, { path: '  ' }), 'INVALID_ARGUMENT');
+});
+
+test('wheel plan carries expectObject and expectScroll to the runtime, and expectScroll is only for a wheel', () => {
+  const plain = buildWheelPlan({ x: 10, y: 10, notches: 2 });
+  assert.equal(plain.expectObject, undefined);
+  assert.equal(plain.expectScroll, undefined, 'default behavior unchanged');
+  const guarded = buildWheelPlan({ x: 10, y: 10, notches: 2, expectObject: 77, expectScroll: true });
+  assert.equal(guarded.expectObject, 77);
+  assert.equal(guarded.expectScroll, true);
+  assert.equal(buildWheelPlan({ x: 10, y: 10, notches: 2, expectScroll: false }).expectScroll, undefined);
+  fails(() => buildWheelPlan({ x: 10, y: 10, notches: 2, expectScroll: 'yes' }), 'INVALID_ARGUMENT');
+  fails(() => buildClickPlan({ x: 1, y: 1, expectScroll: true }), 'INVALID_ARGUMENT');
+});

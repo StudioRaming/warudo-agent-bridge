@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### UI click by path and wheel guards
+- `warudo_ui_click` takes `path` (a case-insensitive part of the element path from `warudo_ui_list`, for example `btn:menu.undo`) to click an icon-only button that has no label text. Same rules as `label`: only usable matches count, `index` settles several, a covered control still stops with `COVERED`; exactly one of `near`, `mark`, `label`, `id`, `path`.
+- `warudo_pointer_wheel` takes `expectObject` (same meaning as on click and drag, checked where the first notch turns) and `expectScroll: true` (stops before any notch with `NOT_SCROLL_AREA` unless the object UGUI would hand the wheel to is a ScrollRect, or a scroll handler on a container that is not a slider, scrollbar, toggle, button or input; the error names what would have received it). Nothing changes when neither is passed. The runtime reports the `pointer-guards` feature; an older runtime answers `RUNTIME_OUTDATED` instead of ignoring a guard.
+
 ### UI language switch (Tools: 86)
 - `warudo_ui_language` sets the language WARUDO plugins read (`LocalizationManager.SetActiveLanguage`), so plugin menus can be captured in English and Japanese without opening WARUDO's settings. It returns `previous` and `original` (the language before the first change); `restore: true` puts `original` back; an unknown code is refused with the list of codes WARUDO has strings for; it is refused with `SCENE_LOADING` while a scene loads.
 - Nothing is saved: WARUDO's own settings write `CorePlugin.Language` (plugin data), which this tool does not touch, so a WARUDO restart starts in the saved language again. The runtime restores `original` itself when the write lease ends, on `warudo_pointer_release`, and when the bridge stops or reloads (`language-state.json` covers a reload that skipped the stop), unless the user picked another language meanwhile.

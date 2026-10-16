@@ -1006,7 +1006,7 @@ Kind: `read` (read-only). Runtime operation: `render.globals`.
 | [`warudo_key_virtual`](#warudo_key_virtual) | write | Virtual key |
 | [`warudo_ui_list`](#warudo_ui_list) | read | List UI elements |
 | [`warudo_ui_at`](#warudo_ui_at) | read | UI at a point |
-| [`warudo_ui_click`](#warudo_ui_click) | write | Click UI by text or mark |
+| [`warudo_ui_click`](#warudo_ui_click) | write | Click UI by text, mark or path |
 | [`warudo_ui_capture`](#warudo_ui_capture) | read | Capture UI with numbered boxes |
 | [`warudo_ui_set_text`](#warudo_ui_set_text) | write | Set input field text |
 | [`warudo_ui_language`](#warudo_ui_language) | set | WARUDO UI language |
@@ -1028,7 +1028,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `holdFrames` | integer |  | Frames the button stays down (at most 4 for a double click). (1..30, default 2) |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
-| `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, from warudo_ui_list. If something else is on top the gesture stops before pressing with COVERED. |
+| `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, or for warudo_pointer_wheel when the first notch turns, from warudo_ui_list. If something else is on top the gesture stops before pressing or turning with COVERED. |
 | `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around, padding and markPointer shape that image and need capture=true. (default false) |
 | `markPointer` | boolean |  | Draw the pointer on the captured image: a red crosshair where the button went down (CLICK, or DOWN when the release was elsewhere), green where it went up (UP), the drag path in yellow, a cyan crosshair for hover and wheel gestures. The same points are in pointerMarks (window pixels). (default true) |
 | `captureBefore` | boolean |  | Also capture the frame before the gesture and return BEFORE and AFTER side by side in one PNG, with the changed regions boxed and numbered on the AFTER side and the diff numbers (changedFraction, boxes with the mean color before and after). Implies capture=true. space=image reads the AFTER side. (default false) |
@@ -1055,7 +1055,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | `button` | `left` \| `right` \| `middle` |  | (default "left") |
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
-| `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, from warudo_ui_list. If something else is on top the gesture stops before pressing with COVERED. |
+| `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, or for warudo_pointer_wheel when the first notch turns, from warudo_ui_list. If something else is on top the gesture stops before pressing or turning with COVERED. |
 | `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around, padding and markPointer shape that image and need capture=true. (default false) |
 | `markPointer` | boolean |  | Draw the pointer on the captured image: a red crosshair where the button went down (CLICK, or DOWN when the release was elsewhere), green where it went up (UP), the drag path in yellow, a cyan crosshair for hover and wheel gestures. The same points are in pointerMarks (window pixels). (default true) |
 | `captureBefore` | boolean |  | Also capture the frame before the gesture and return BEFORE and AFTER side by side in one PNG, with the changed regions boxed and numbered on the AFTER side and the diff numbers (changedFraction, boxes with the mean color before and after). Implies capture=true. space=image reads the AFTER side. (default false) |
@@ -1107,7 +1107,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
-| `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, from warudo_ui_list. If something else is on top the gesture stops before pressing with COVERED. |
+| `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, or for warudo_pointer_wheel when the first notch turns, from warudo_ui_list. If something else is on top the gesture stops before pressing or turning with COVERED. |
 | `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around, padding and markPointer shape that image and need capture=true. (default false) |
 | `markPointer` | boolean |  | Draw the pointer on the captured image: a red crosshair where the button went down (CLICK, or DOWN when the release was elsewhere), green where it went up (UP), the drag path in yellow, a cyan crosshair for hover and wheel gestures. The same points are in pointerMarks (window pixels). (default true) |
 | `captureBefore` | boolean |  | Also capture the frame before the gesture and return BEFORE and AFTER side by side in one PNG, with the changed regions boxed and numbered on the AFTER side and the diff numbers (changedFraction, boxes with the mean color before and after). Implies capture=true. space=image reads the AFTER side. (default false) |
@@ -1120,9 +1120,9 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 
 ### warudo_pointer_wheel
 
-Turn the virtual mouse wheel over a point: positive notches scroll up, negative down, at most 20, spread over frames. For scroll lists and panels. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId.
+Turn the virtual mouse wheel over a point: positive notches scroll up, negative down, at most 20, spread over frames. For scroll lists and panels. A wheel turned over a slider or another control that reads the wheel changes its value, so pass expectScroll=true (stop with NOT_SCROLL_AREA before any notch when what would receive the wheel is not a scroll area, and say what it is) and/or expectObject (the panel that must be under the pointer, or COVERED). It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly. x/y (and path) are in the image you received when you pass space="image": pixels of the latest capture image, or of the one named by imageId.
 
-Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
+Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame timeline the MCP server builds from the arguments`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed. Also needs runtime feature `pointer-guards` when expectObject or expectScroll is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1134,6 +1134,8 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 | `imageId` | string |  | With space=image: the imageId from the capture reply. Default: the latest image of this MCP server (it keeps the last 32). |
 | `modifiers` | `ctrl` \| `shift` \| `alt`[] |  | Virtual modifier keys held for the whole gesture. Code that reads the virtual keys (see the README) sees them; WARUDO hotkeys do not. |
 | `settleFrames` | integer |  | Frames to wait after the gesture, with the pointer still in place, so the UI has reacted before the reply (and the capture). (0..60, default 2) |
+| `expectObject` | integer |  | Instance id of the UI object that must be under the pointer (or inside it) when the button goes down, or for warudo_pointer_wheel when the first notch turns, from warudo_ui_list. If something else is on top the gesture stops before pressing or turning with COVERED. |
+| `expectScroll` | boolean |  | Stop before any notch with NOT_SCROLL_AREA unless the object that would receive the wheel at the point is a scroll area (a ScrollRect, or a scroll handler on a container that is not a slider, scrollbar, toggle, button or input). The reply error lists what would have received it. (default false) |
 | `capture` | boolean |  | Also capture the screen after settleFrames, with the virtual pointer still in place (hover and pressed looks included), and return it as an image (it carries an imageId like any capture). maxSize, grid, gridStep, region, around, padding and markPointer shape that image and need capture=true. (default false) |
 | `markPointer` | boolean |  | Draw the pointer on the captured image: a red crosshair where the button went down (CLICK, or DOWN when the release was elsewhere), green where it went up (UP), the drag path in yellow, a cyan crosshair for hover and wheel gestures. The same points are in pointerMarks (window pixels). (default true) |
 | `captureBefore` | boolean |  | Also capture the frame before the gesture and return BEFORE and AFTER side by side in one PNG, with the changed regions boxed and numbered on the AFTER side and the diff numbers (changedFraction, boxes with the mean color before and after). Implies capture=true. space=image reads the AFTER side. (default false) |
@@ -1204,15 +1206,16 @@ Kind: `read` (read-only). Runtime operation: `ui.at`. Needs runtime feature `poi
 
 ### warudo_ui_click
 
-Click a control of the WARUDO main window with the virtual mouse, at the center of its rectangle. Name it by near (the visible text, exact match first, then contains; the preferred way, it also finds plugin overlay panels such as Color Studio), by mark (the number printed on the latest warudo_ui_capture image, refused with MARK_STALE when the controls on screen changed since), by label (contains, or labelMatch) or by id from warudo_ui_list. If another object covers the control the click is not sent and the reply is COVERED, so it never clicks whatever is on top. An ambiguous text needs index. capture=true returns the image with the pointer marked. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly.
+Click a control of the WARUDO main window with the virtual mouse, at the center of its rectangle. Name it by near (the visible text, exact match first, then contains; the preferred way, it also finds plugin overlay panels such as Color Studio), by mark (the number printed on the latest warudo_ui_capture image, refused with MARK_STALE when the controls on screen changed since), by label (contains, or labelMatch), by path (a case-insensitive part of the element path, for an icon-only button that has no text, such as btn:menu.undo; read the path from warudo_ui_list or warudo_ui_capture) or by id from warudo_ui_list. If another object covers the control the click is not sent and the reply is COVERED, so it never clicks whatever is on top. An ambiguous text needs index. capture=true returns the image with the pointer marked. It reaches the main-window UI and plugins that read the virtual pointer; it does not move the WARUDO camera, reach the WARUDO editor window, or reach code that reads Input.* directly.
 
 Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, after the MCP server finds the element with ui.list`. Needs runtime feature `pointer`. Also needs runtime feature `capture-tools` when a capture option (maxSize, grid, region, around, ...) is passed.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `near` | string |  | Visible text of the control: exact match first, then contains (case-insensitive). Pass one of near, mark, label or id. |
+| `near` | string |  | Visible text of the control: exact match first, then contains (case-insensitive). Pass one of near, mark, label, path or id. |
 | `mark` | integer |  | Number from the latest warudo_ui_capture of this MCP server. (>= 1) |
 | `id` | integer |  | Element id from warudo_ui_list. |
+| `path` | string |  | Case-insensitive part of the element path from warudo_ui_list, for a control that has no text (an icon button, for example "btn:menu.undo"). Same rules as label: only usable matches count, index picks one of several, COVERED still applies. |
 | `label` | string |  | Text of the control, matched by labelMatch (default contains). |
 | `labelMatch` | `exact` \| `contains` \| `auto` |  | How near/label match: auto = exact first, then contains (the default for near); contains is the default for label. |
 | `index` | integer |  | Which usable match to click when several match (0-based, ui.list order). (>= 0) |

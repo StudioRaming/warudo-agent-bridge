@@ -444,7 +444,7 @@ AI 클라이언트 ──stdio──> MCP 서버 (Node) ──파일──> WARU
   한 점에 `warudo_pointer_click` / `warudo_pointer_drag` / `warudo_pointer_wheel`. `capture: true`는
   포인터가 그대로 있는 상태에서 찍은 스크린샷을 돌려줍니다. `warudo_ui_at`은 한 점을 무엇이 덮고 있는지
   보여 주며, 덮인 컨트롤을 겨냥한 클릭은 위에 있는 것을 누르는 대신 `COVERED`로 멈춥니다.
-  `warudo_ui_set_text`는 입력 필드를 채웁니다(타이핑한 글자는 보낼 수 없기 때문입니다).
+  `warudo_ui_click`은 `near`(보이는 글자), `mark`, `label`, `id`, 또는 글자가 없는 아이콘 버튼용 `path`(`warudo_ui_list`에서 읽은 요소 경로의 일부, 예: `btn:menu.undo`)를 받습니다. `warudo_pointer_wheel`은 그 점 아래에 있는 것이 무엇이든 휠을 돌리므로, 패널을 스크롤하려던 휠이 슬라이더 값을 바꿀 수 있습니다. `expectScroll: true`를 주면 스크롤 영역이 휠을 받지 않을 때 첫 노치 전에 `NOT_SCROLL_AREA`로 멈추고(오류가 무엇이 받을지 알려 줍니다), `expectObject`를 주면 그 오브젝트가 포인터 아래에 없을 때 `COVERED`로 멈춥니다. 둘 다 기능 `pointer-guards`가 필요합니다. `warudo_ui_set_text`는 입력 필드를 채웁니다(타이핑한 글자는 보낼 수 없기 때문입니다).
   `warudo_pointer_state`는 눌린 것을 보여 주고, `warudo_pointer_release`는 모든 것을 끝냅니다.
 - **안전:** 제스처 하나는 최대 600프레임, 64점입니다. 누른 채 둔 버튼(여러 호출에 걸친 드래그)이나 세워 둔
   포인터는 놓을 때, 쓰기 lease가 끝날 때, 또는 쓰지 않은 채 `pointer.idleReleaseMs`가 지나면 끝납니다.

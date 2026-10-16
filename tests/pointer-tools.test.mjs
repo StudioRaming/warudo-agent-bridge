@@ -236,3 +236,61 @@ test('a missing feature is never cached, so a reinstall is noticed on the next c
     await runtime.stop();
   }
 });
+
+test('ui_click by path clicks an icon-only button that label cannot find', async () => {
+  const listings = [];
+  const runtime = await pointerRuntime((op, params) => {
+    if (op === 'ui.list') {
+      listings.push(params);
+      return { screen: SCREEN, total: 2, truncated: false, items: [row(21, '', { path: 'Canvas/WCS/btn:menu.undo', label: null, rect: [10, 20, 30, 30] }), row(22, 'Apply')] };
+    }
+    if (op === 'pointer.play') return { gesture: 'click' };
+    return {};
+  });
+  try {
+    const server = createServer({ home: runtime.home, timeoutMs: 3000 });
+    assert.equal(payload(await call(server, 1, 'warudo_ui_click', { label: '되돌리기' })).code, 'UI_NOT_FOUND', 'the words live in a tooltip, not in the label');
+    const reply = await call(server, 2, 'warudo_ui_click', { path: 'btn:menu.undo' });
+    assert.equal(reply.result.isError, false, reply.result.content[0].text);
+    assert.deepEqual(payload(reply).resolved, { id: 21, path: 'Canvas/WCS/btn:menu.undo', label: null, point: [25, 35] });
+    assert.deepEqual(listings[1], { query: 'btn:menu.undo', interactableOnly: false, limit: 500 }, 'ui.list matches the query against label or path');
+    const play = runtime.seen.find((request) => request.operation === 'pointer.play');
+    assert.equal(play.params.expectObject, 21, 'the covered-control guard stays on');
+    assert.equal(payload(await call(server, 3, 'warudo_ui_click', { path: 'btn:menu.undo', label: 'x' })).code, 'INVALID_ARGUMENT', 'one selector only');
+    assert.equal(byName.warudo_ui_click.inputSchema.properties.path.type, 'string');
+    assert.match(byName.warudo_ui_click.description, /icon/i, 'tells an agent to use path for icon buttons');
+  } finally {
+    await runtime.stop();
+  }
+});
+
+test('wheel guards: expectObject and expectScroll reach the runtime and need the pointer-guards feature, the plain wheel does not', async () => {
+  const wheel = { x: 100, y: 100, notches: -3 };
+  const old = await pointerRuntime(() => ({ gesture: 'wheel' }), ['pointer']);
+  try {
+    const server = createServer({ home: old.home, timeoutMs: 3000 });
+    const plain = await call(server, 1, 'warudo_pointer_wheel', wheel);
+    assert.equal(plain.result.isError, false, 'an older runtime still turns a plain wheel');
+    for (const extra of [{ expectScroll: true }, { expectObject: 5 }]) {
+      const reply = await call(server, 2, 'warudo_pointer_wheel', { ...wheel, ...extra });
+      assert.equal(payload(reply).code, 'RUNTIME_OUTDATED', JSON.stringify(extra));
+    }
+    assert.equal(old.seen.filter((request) => request.operation === 'pointer.play').length, 1, 'a guard an older runtime would ignore is never sent');
+  } finally {
+    await old.stop();
+  }
+  const current = await pointerRuntime(() => ({ gesture: 'wheel' }), ['pointer', 'pointer-guards']);
+  try {
+    const server = createServer({ home: current.home, timeoutMs: 3000 });
+    const reply = await call(server, 1, 'warudo_pointer_wheel', { ...wheel, expectObject: 5, expectScroll: true });
+    assert.equal(reply.result.isError, false, reply.result.content[0].text);
+    const play = current.seen.find((request) => request.operation === 'pointer.play');
+    assert.equal(play.params.gesture, 'wheel');
+    assert.equal(play.params.expectObject, 5);
+    assert.equal(play.params.expectScroll, true);
+    assert.equal(byName.warudo_pointer_wheel.inputSchema.properties.expectScroll.type, 'boolean');
+    assert.ok(byName.warudo_pointer_wheel.inputSchema.properties.expectObject);
+  } finally {
+    await current.stop();
+  }
+});

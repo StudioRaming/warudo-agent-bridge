@@ -130,13 +130,20 @@ namespace StudioRaming.WarudoAgentBridge
             int pressRow = Array.FindIndex(rows, row => row.Down != 0);
             int releaseRow = Array.FindLastIndex(rows, row => row.Up != 0);
 
+            // The point that must hold the expected object is where the button goes down, or for a wheel where it first turns.
+            int wheelRow = Array.FindIndex(rows, row => row.Wheel != 0f);
+            int expectRow = pressRow >= 0 ? pressRow : wheelRow;
+            bool expectScroll = (bool?)p["expectScroll"] ?? false;
+            if (expectScroll && wheelRow < 0) throw new ArgumentException("INVALID_ARGUMENT: expectScroll needs a gesture that turns the wheel.");
+
             GameObject expected = null;
             if (expectId.HasValue)
             {
-                if (pressRow < 0) throw new ArgumentException("INVALID_ARGUMENT: expectObject needs a gesture that presses a button.");
+                if (expectRow < 0) throw new ArgumentException("INVALID_ARGUMENT: expectObject needs a gesture that presses a button or turns the wheel.");
                 expected = FindUiObject(expectId.Value) ?? throw new ArgumentException("UI_NOT_FOUND: expectObject " + expectId.Value + " is not an active UI object; refresh ui.list.");
-                RequireNotCovered(expected, new Vector2(rows[pressRow].X, rows[pressRow].Y));
+                RequireNotCovered(expected, new Vector2(rows[expectRow].X, rows[expectRow].Y));
             }
+            if (expectScroll) RequireScrollArea(new Vector2(rows[wheelRow].X, rows[wheelRow].Y));
 
             pointerPlaying = true;
             pointerOwner = owner;
@@ -154,8 +161,10 @@ namespace StudioRaming.WarudoAgentBridge
                 // The hit under the pointer is read on the frame before the press and the release, so a covered target is caught before the press.
                 int pressCheck = pressRow < 0 ? int.MaxValue : startFrame + pressRow - 1;
                 int releaseCheck = releaseRow < 0 ? int.MaxValue : startFrame + releaseRow - 1;
+                // A wheel is checked on the frame before its first notch, the same way, in case the panel moved since the pre-check.
+                int wheelCheck = wheelRow < 0 || pressRow >= 0 ? int.MaxValue : startFrame + wheelRow - 1;
                 object pressHit = null, releaseHit = null;
-                bool pressChecked = false, releaseChecked = false;
+                bool pressChecked = false, releaseChecked = false, wheelChecked = false;
                 while (true)
                 {
                     int frame = Time.frameCount;
@@ -169,6 +178,13 @@ namespace StudioRaming.WarudoAgentBridge
                         if (expected != null) RequireNotCovered(expected, at);
                         pressHit = DescribeHitAt(at);
                         pressChecked = true;
+                    }
+                    if (!wheelChecked && frame >= wheelCheck)
+                    {
+                        var at = new Vector2(rows[wheelRow].X, rows[wheelRow].Y);
+                        if (expected != null) RequireNotCovered(expected, at);
+                        if (expectScroll) RequireScrollArea(at);
+                        wheelChecked = true;
                     }
                     if (!releaseChecked && frame >= releaseCheck)
                     {
@@ -331,6 +347,33 @@ namespace StudioRaming.WarudoAgentBridge
                 ? "nothing"
                 : ObjectPath(hits[0].gameObject.transform) + " (" + (hits[0].module == null ? "?" : hits[0].module.GetType().Name) + ", sorting order " + hits[0].sortingOrder + ")";
             throw new InvalidOperationException("COVERED: " + top + " is on top at (" + Math.Round(topLeft.x, 1) + ", " + Math.Round(topLeft.y, 1) + "), not " + ObjectPath(expected.transform) + ".");
+        }
+
+        // A wheel turned over a slider, a toggle or a plugin control that reads the wheel changes its value, so a caller that means to
+        // scroll a panel can ask to stop first. A scroll area is what UGUI would hand the wheel to: the nearest IScrollHandler above the
+        // top hit that is a ScrollRect, or a plain scroll handler on a container (no drag, press or click handler, no value control).
+        void RequireScrollArea(Vector2 topLeft)
+        {
+            List<RaycastResult> hits = UiRaycast(topLeft);
+            GameObject top = hits.Count == 0 ? null : hits[0].gameObject;
+            GameObject receiver = top == null ? null : ExecuteEvents.GetEventHandler<IScrollHandler>(top);
+            if (receiver != null && IsScrollArea(receiver)) return;
+            string at = "(" + Math.Round(topLeft.x, 1) + ", " + Math.Round(topLeft.y, 1) + ")";
+            string under = top == null ? "nothing is under the pointer" : ObjectPath(top.transform) + " is under the pointer";
+            string would = receiver == null
+                ? "no scroll handler above it, so the wheel would reach nothing that UGUI scrolls (a control that reads the wheel by itself would still react)"
+                : "the wheel would go to " + ObjectPath(receiver.transform) + " (" + string.Join(", ", HandlerTypeNames(receiver)) + "; kind " + UiKindOf(new UiElement { Target = receiver }) + ")";
+            throw new InvalidOperationException("NOT_SCROLL_AREA: at " + at + " " + under + "; " + would + ". Aim at a scroll area or drop expectScroll.");
+        }
+
+        static bool IsScrollArea(GameObject receiver)
+        {
+            if (receiver.GetComponent<UnityEngine.UI.ScrollRect>() != null) return true;
+            string kind = UiKindOf(new UiElement { Target = receiver });
+            if (kind == "input" || kind == "toggle" || kind == "slider" || kind == "button") return false;
+            foreach (Component component in receiver.GetComponents<Component>())
+                if (component != null && (component is IDragHandler || component is IPointerDownHandler || component is IPointerClickHandler)) return false;
+            return true;
         }
 
         // An active UI object by instance id, across every active canvas (ObjectById only sees loaded scenes).
