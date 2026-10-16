@@ -433,6 +433,14 @@ namespace StudioRaming.WarudoAgentBridge
             return Rgb(stops[i][0] + (stops[i + 1][0] - stops[i][0]) * k, stops[i][1] + (stops[i + 1][1] - stops[i][1]) * k, stops[i][2] + (stops[i + 1][2] - stops[i][2]) * k);
         }
 
+        public static Color32 DepthColor(float t) { return Ramp(DepthStops, t); }
+
+        public static void FillRect(Color32[] img, int size, int x0, int y0, int width, int height, Color32 color)
+        {
+            for (int y = Math.Max(0, y0); y < Math.Min(size, y0 + height); y++)
+                for (int x = Math.Max(0, x0); x < Math.Min(size, x0 + width); x++) img[y * size + x] = color;
+        }
+
         public static bool DepthRange(GBuffer g, out float near, out float far)
         {
             near = float.MaxValue; far = float.MinValue;
@@ -525,7 +533,18 @@ namespace StudioRaming.WarudoAgentBridge
             public int X, Y, Z, Group;
             public bool Equals(PositionKey o) { return X == o.X && Y == o.Y && Z == o.Z && Group == o.Group; }
             public override bool Equals(object o) { return o is PositionKey && Equals((PositionKey)o); }
-            public override int GetHashCode() { return ((X * 73856093) ^ (Y * 19349663) ^ (Z * 83492791)) * 31 + Group; }
+            public override int GetHashCode()
+            {
+                ulong h = ((ulong)(uint)X * 0x9E3779B97F4A7C15UL) ^ ((ulong)(uint)Y * 0xC2B2AE3D27D4EB4FUL) ^ ((ulong)(uint)Z * 0x165667B19E3779F9UL) ^ ((ulong)(uint)Group * 0x27D4EB2F165667C5UL);
+                return (int)((h * 0x9E3779B97F4A7C15UL) >> 32);
+            }
+        }
+
+        // Edge keys are (low id << 32 | high id); the default long hash (low ^ high) collides for neighbors, so mix.
+        sealed class EdgeComparer : IEqualityComparer<long>
+        {
+            public bool Equals(long a, long b) { return a == b; }
+            public int GetHashCode(long x) { return (int)(((ulong)x * 0x9E3779B97F4A7C15UL) >> 32); }
         }
 
         // Edges that are one place in 3D but two places in UV space (the cuts of the unwrap), as vertex index pairs.
@@ -547,8 +566,8 @@ namespace StudioRaming.WarudoAgentBridge
                 positionId[v] = id;
             }
             // Edge key = the two position ids; the value is the vertex pair of the first usage (low position id first).
-            var first = new Dictionary<long, long>(m.TriangleCount * 2);
-            var done = new HashSet<long>();
+            var first = new Dictionary<long, long>(m.TriangleCount * 2, new EdgeComparer());
+            var done = new HashSet<long>(new EdgeComparer());
             var seams = new List<int>();
             for (int t = 0; t < m.TriangleCount; t++)
                 for (int corner = 0; corner < 3; corner++)
