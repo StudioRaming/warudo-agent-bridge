@@ -182,6 +182,24 @@ namespace StudioRaming.WarudoAgentBridge
             return isolation;
         }
 
+        // Moves one more renderer's object onto the layer (and Return puts it back), for one-part-at-a-time renders.
+        public void Move(Renderer renderer)
+        {
+            if (renderer == null || objects.Contains(renderer.gameObject)) return;
+            objects.Add(renderer.gameObject);
+            layers.Add(renderer.gameObject.layer);
+            renderer.gameObject.layer = Layer;
+        }
+
+        public void Return(Renderer renderer)
+        {
+            if (renderer == null) return;
+            int index = objects.IndexOf(renderer.gameObject);
+            if (index < 0) return;
+            if (objects[index] != null) objects[index].layer = layers[index];
+            objects.RemoveAt(index); layers.RemoveAt(index);
+        }
+
         public void Dispose()
         {
             for (int i = 0; i < objects.Count; i++) if (objects[i] != null) objects[i].layer = layers[i];
