@@ -330,9 +330,8 @@ namespace StudioRaming.WarudoAgentBridge
         // An active UI object by instance id, across every active canvas (ObjectById only sees loaded scenes).
         static GameObject FindUiObject(int id)
         {
-            foreach (Canvas canvas in UnityEngine.Object.FindObjectsOfType<Canvas>())
+            foreach (Canvas canvas in ActiveRootCanvases())
             {
-                if (!canvas.isRootCanvas) continue;
                 foreach (Transform child in canvas.GetComponentsInChildren<Transform>(false))
                     if (child.gameObject.GetInstanceID() == id) return child.gameObject;
             }

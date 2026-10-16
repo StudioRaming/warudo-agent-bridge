@@ -87,16 +87,23 @@ namespace StudioRaming.WarudoAgentBridge
                 canvas = element.Root.name,
                 sortingOrder = element.Root.sortingOrder,
                 renderMode = element.Root.renderMode.ToString(),
+                hidden = element.Root.gameObject.hideFlags != HideFlags.None,
             };
         }
 
         static float R(float value) { return (float)Math.Round(value, 1); }
 
+        // Every active root canvas, including the ones plugins build with HideFlags.HideAndDontSave: FindObjectsOfType skips
+        // those. FindObjectsOfTypeAll also returns prefab assets and other non-scene objects; they are never active in a hierarchy.
+        static IEnumerable<Canvas> ActiveRootCanvases()
+        {
+            return UnityEngine.Resources.FindObjectsOfTypeAll<Canvas>().Where(canvas => canvas != null && canvas.isRootCanvas && canvas.isActiveAndEnabled && canvas.gameObject.activeInHierarchy);
+        }
+
         // Active, visible elements that take a click, press, drag or wheel turn, frontmost canvas first.
         static IEnumerable<UiElement> CollectUiElements(int width, int height)
         {
-            Canvas[] roots = UnityEngine.Object.FindObjectsOfType<Canvas>()
-                .Where(canvas => canvas.isRootCanvas && canvas.isActiveAndEnabled)
+            Canvas[] roots = ActiveRootCanvases()
                 .OrderByDescending(canvas => canvas.sortingOrder).ThenBy(canvas => canvas.name).ToArray();
             var behaviours = new List<MonoBehaviour>();
             foreach (Canvas root in roots)

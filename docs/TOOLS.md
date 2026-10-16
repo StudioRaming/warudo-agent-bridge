@@ -1004,7 +1004,7 @@ Kind: `write` (changes WARUDO). Runtime operation: `pointer.play, with a frame t
 
 ### warudo_ui_list
 
-List the active, visible controls of the WARUDO main window that react to the pointer (buttons, sliders, toggles, scroll areas and anything with a click, press, drag or scroll handler), frontmost canvas first. Each has an id, path, handler types, label (first text in it), rectangle [x, y, width, height] and center in window pixels, and whether it is interactable and on screen. Use the center with warudo_pointer_click, or warudo_ui_click to click one by label.
+List the active, visible controls of the WARUDO main window that react to the pointer (buttons, sliders, toggles, scroll areas and anything with a click, press, drag or scroll handler), frontmost canvas first. Each has an id, path, handler types, label (first text in it), rectangle [x, y, width, height] and center in window pixels, whether it is interactable and on screen, and hidden=true when its canvas object carries HideFlags (a plugin overlay such as a Color Studio panel). Use the center with warudo_pointer_click, or warudo_ui_click to click one by label.
 
 Kind: `read` (read-only). Runtime operation: `ui.list`. Needs runtime feature `pointer`.
 
