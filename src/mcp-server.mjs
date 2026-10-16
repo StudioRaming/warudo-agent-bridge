@@ -26,7 +26,7 @@ export const INSTRUCTIONS = [
 ].join(' ');
 
 const textContent = (value) => ({ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) });
-const CAPTURE_TOOLS = new Set(['warudo_camera_capture', 'warudo_screen_capture', 'warudo_analysis_capture', 'warudo_ui_capture']);
+const CAPTURE_TOOLS = new Set(['warudo_camera_capture', 'warudo_screen_capture', 'warudo_analysis_capture', 'warudo_ui_capture', 'warudo_screen_diff', 'warudo_screen_sequence']);
 const isCapture = (name) => CAPTURE_TOOLS.has(name);
 // Capture tools return the PNG path at the top; a pointer gesture with capture=true returns it under "capture".
 const evidencePath = (name, data) => (isCapture(name) ? data && data.path : data && data.capture && data.capture.path);

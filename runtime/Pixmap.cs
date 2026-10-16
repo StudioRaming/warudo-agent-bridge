@@ -66,48 +66,45 @@ namespace StudioRaming.WarudoAgentBridge
             return result;
         }
 
-        // Area average (a box filter), so small text stays legible when a big frame is shrunk. One pass over the source:
-        // rows are summed into an accumulator, then each destination pixel averages its span of that accumulator.
+        // Area average (a box filter), so small text stays legible when a big frame is shrunk. Every source pixel is read once:
+        // each destination pixel sums the whole-pixel box that maps onto it with integer adds, then divides.
         public Pixmap Downscale(int dw, int dh)
         {
             if (dw == Width && dh == Height) return Clone();
-            double sx = (double)Width / dw, sy = (double)Height / dh;
             var result = new Pixmap(dw, dh);
-            var accumulator = new float[Width * 3];
+            var xs = new int[dw + 1];
+            for (int dx = 0; dx <= dw; dx++) xs[dx] = (int)((long)dx * Width / dw);
+            for (int dx = 0; dx < dw; dx++) if (xs[dx + 1] <= xs[dx]) xs[dx + 1] = Math.Min(Width, xs[dx] + 1);
+            var sumR = new int[dw];
+            var sumG = new int[dw];
+            var sumB = new int[dw];
             for (int dy = 0; dy < dh; dy++)
             {
-                double y0 = dy * sy, y1 = Math.Min(Height, (dy + 1) * sy);
-                Array.Clear(accumulator, 0, accumulator.Length);
-                for (int row = (int)y0; row < Height && row < y1; row++)
+                int y0 = (int)((long)dy * Height / dh), y1 = (int)((long)(dy + 1) * Height / dh);
+                if (y1 <= y0) y1 = Math.Min(Height, y0 + 1);
+                Array.Clear(sumR, 0, dw);
+                Array.Clear(sumG, 0, dw);
+                Array.Clear(sumB, 0, dw);
+                for (int row = y0; row < y1; row++)
                 {
-                    float weight = (float)(Math.Min(y1, row + 1) - Math.Max(y0, row));
-                    if (weight <= 0f) continue;
                     int baseIndex = row * Width;
-                    for (int x = 0; x < Width; x++)
+                    for (int dx = 0; dx < dw; dx++)
                     {
-                        Color32 c = Pixels[baseIndex + x];
-                        int a = x * 3;
-                        accumulator[a] += c.r * weight;
-                        accumulator[a + 1] += c.g * weight;
-                        accumulator[a + 2] += c.b * weight;
+                        int r = 0, g = 0, b = 0;
+                        int end = baseIndex + xs[dx + 1];
+                        for (int i = baseIndex + xs[dx]; i < end; i++)
+                        {
+                            Color32 c = Pixels[i];
+                            r += c.r; g += c.g; b += c.b;
+                        }
+                        sumR[dx] += r; sumG[dx] += g; sumB[dx] += b;
                     }
                 }
-                double rowWeight = y1 - y0;
+                int rows = y1 - y0;
                 for (int dx = 0; dx < dw; dx++)
                 {
-                    double x0 = dx * sx, x1 = Math.Min(Width, (dx + 1) * sx);
-                    double r = 0, g = 0, b = 0;
-                    for (int x = (int)x0; x < Width && x < x1; x++)
-                    {
-                        double weight = Math.Min(x1, x + 1) - Math.Max(x0, x);
-                        if (weight <= 0) continue;
-                        int a = x * 3;
-                        r += accumulator[a] * weight;
-                        g += accumulator[a + 1] * weight;
-                        b += accumulator[a + 2] * weight;
-                    }
-                    double area = rowWeight * (x1 - x0);
-                    result.Pixels[dy * dw + dx] = new Color32((byte)Math.Round(r / area), (byte)Math.Round(g / area), (byte)Math.Round(b / area), 255);
+                    int area = rows * (xs[dx + 1] - xs[dx]);
+                    result.Pixels[dy * dw + dx] = new Color32((byte)((sumR[dx] + area / 2) / area), (byte)((sumG[dx] + area / 2) / area), (byte)((sumB[dx] + area / 2) / area), 255);
                 }
             }
             return result;

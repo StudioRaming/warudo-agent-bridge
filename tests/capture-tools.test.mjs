@@ -157,3 +157,105 @@ test('a gesture capture carries its own imageId, and capture options need the ca
     await older.stop();
   }
 });
+
+test('diff, probe and sequence are read tools that need capture-tools; the image ones come back as images', () => {
+  for (const name of ['warudo_screen_diff', 'warudo_screen_probe', 'warudo_screen_sequence', 'warudo_ui_capture']) {
+    assert.equal(byName[name].kind, 'read', name);
+    assert.equal(byName[name].needsLease, false, name);
+    assert.equal(byName[name].requires, 'capture-tools', name);
+    assert.ok(byName[name].check, name);
+  }
+  assert.deepEqual(byName.warudo_screen_diff.inputSchema.required, ['baseline']);
+  assert.equal(byName.warudo_screen_diff.inputSchema.properties.threshold.default, 6);
+  assert.equal(byName.warudo_screen_sequence.inputSchema.properties.frames.maximum, 16);
+  assert.equal(byName.warudo_screen_sequence.inputSchema.properties.everyFrames.maximum, 120);
+  assert.equal(byName.warudo_screen_probe.inputSchema.properties.points.maxItems, 64);
+});
+
+test('sequence limits: 2..16 frames, every 1..120, at most 1200 rendered frames in all', () => {
+  assert.deepEqual(validateCaptureArgs('screen_sequence', { frames: 16, everyFrames: 80 }), { frames: 16, everyFrames: 80 });
+  assert.deepEqual(validateCaptureArgs('screen_sequence', {}), {});
+  for (const bad of [{ frames: 1 }, { frames: 17 }, { everyFrames: 0 }, { everyFrames: 121 }, { frames: 2.5 }]) {
+    assert.throws(() => validateCaptureArgs('screen_sequence', bad), { code: 'INVALID_ARGUMENT' }, JSON.stringify(bad));
+  }
+  assert.throws(() => validateCaptureArgs('screen_sequence', { frames: 16, everyFrames: 120 }), { code: 'SEQUENCE_TOO_LONG' });
+  assert.throws(() => validateCaptureArgs('screen_sequence', { frames: 16, everyFrames: 81 }), { code: 'SEQUENCE_TOO_LONG' });
+});
+
+test('diff options and probe arguments are checked', () => {
+  const evidencePath = (candidate) => candidate;
+  assert.deepEqual(validateCaptureArgs('screen_diff', { baseline: 'a.png', threshold: 0, mergeGap: 64 }, { evidencePath }), { baseline: 'a.png', threshold: 0, mergeGap: 64 });
+  for (const bad of [{}, { baseline: '' }, { baseline: 'a.png', threshold: 256 }, { baseline: 'a.png', threshold: -1 }, { baseline: 'a.png', mergeGap: 65 }]) {
+    assert.throws(() => validateCaptureArgs('screen_diff', bad, { evidencePath }), { code: 'INVALID_ARGUMENT' }, JSON.stringify(bad));
+  }
+  assert.throws(() => validateCaptureArgs('screen_probe', {}), { code: 'INVALID_ARGUMENT' });
+  assert.throws(() => validateCaptureArgs('screen_probe', { points: [] }), { code: 'INVALID_ARGUMENT' });
+  assert.throws(() => validateCaptureArgs('screen_probe', { points: [[1]] }), { code: 'INVALID_ARGUMENT' });
+  assert.throws(() => validateCaptureArgs('screen_probe', { points: Array.from({ length: 65 }, () => [1, 1]) }), { code: 'INVALID_ARGUMENT' });
+  assert.throws(() => validateCaptureArgs('screen_probe', { regions: [[1, 1, 0, 5]] }), { code: 'INVALID_ARGUMENT' });
+  assert.throws(() => validateCaptureArgs('screen_probe', { points: [[2560, 5]] }, { screen: SCREEN }), { code: 'REGION_OUTSIDE_SCREEN' });
+  assert.throws(() => validateCaptureArgs('screen_probe', { regions: [[2500, 5, 100, 5]] }, { screen: SCREEN }), { code: 'REGION_OUTSIDE_SCREEN' });
+  assert.throws(() => validateCaptureArgs('screen_probe', { points: [[1, 1]], radius: 33 }), { code: 'INVALID_ARGUMENT' });
+  assert.deepEqual(validateCaptureArgs('screen_probe', { points: [[10, 20]], regions: [[0, 0, 5, 5]], radius: 0 }), { points: [[10, 20]], regions: [[0, 0, 5, 5]], radius: 0 });
+});
+
+test('a baseline outside the evidence folder is refused before anything runs', async () => {
+  const rt = await runtimeWith((op) => ({ op }));
+  try {
+    const server = createServer({ home: rt.home, timeoutMs: 3000 });
+    const evidence = path.join(rt.root, 'evidence');
+    const outsideCandidates = [
+      path.join(evidence, '..', 'state.json'),
+      path.join(evidence, '..', 'x.png'),
+      path.join(evidence, '..', '..', 'secret.png'),
+      path.join(evidence, 'sub', '..', '..', 'x.png'),
+      path.join(rt.home, 'other.png'),
+      path.join(evidence, 'notes.txt'),
+      'relative-name.png',
+    ];
+    for (const baseline of outsideCandidates) {
+      const reply = await call(server, 1, 'warudo_screen_diff', { baseline });
+      assert.equal(reply.result.isError, true, baseline);
+      assert.equal(payload(reply).code, 'EVIDENCE_PATH_REJECTED', baseline);
+    }
+    assert.equal(rt.seen.length, 0, 'the runtime never saw a rejected baseline');
+    const fine = path.join(evidence, 'a.png');
+    const ok = await call(server, 2, 'warudo_screen_diff', { baseline: fine });
+    assert.equal(ok.result.isError, false, ok.result.content[0].text);
+    assert.equal(rt.seen.find((request) => request.operation === 'screen.diff').params.baseline, path.resolve(fine));
+  } finally {
+    await rt.stop();
+  }
+});
+
+test('diff and sequence replies carry the image, probe stays text', async () => {
+  const rt = await runtimeWith(async (op) => {
+    if (op === 'screen.diff' || op === 'screen.sequence') {
+      const file = path.join(rt.root, 'evidence', `${op}.png`);
+      await fs.writeFile(file, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      return { path: file, mapping: op === 'screen.sequence' ? { ...MAPPING, clickable: false } : MAPPING };
+    }
+    return { items: [] };
+  });
+  try {
+    const server = createServer({ home: rt.home, timeoutMs: 3000 });
+    const diff = await call(server, 1, 'warudo_screen_diff', { baseline: path.join(rt.root, 'evidence', 'a.png') });
+    assert.equal(diff.result.content[1].type, 'image');
+    const sequence = await call(server, 2, 'warudo_screen_sequence', { frames: 6, everyFrames: 10 });
+    assert.equal(sequence.result.content[1].type, 'image');
+    assert.match(payload(sequence).imageId, /^img-/);
+    // A contact sheet cannot be clicked into.
+    const refused = await call(server, 3, 'warudo_pointer_click', { x: 5, y: 5, space: 'image' });
+    assert.equal(payload(refused).code, 'IMAGE_NOT_CLICKABLE');
+    const probe = await call(server, 4, 'warudo_screen_probe', { points: [[10, 10]] });
+    assert.equal(probe.result.content.length, 1);
+    assert.equal(rt.seen.find((request) => request.operation === 'screen.probe').params.radius, undefined);
+    // Probe points can be given in image space (the diff image is clickable).
+    const first = await call(server, 5, 'warudo_screen_diff', { baseline: path.join(rt.root, 'evidence', 'a.png') });
+    assert.equal(first.result.isError, false);
+    await call(server, 6, 'warudo_screen_probe', { points: [[100, 50]], space: 'image' });
+    assert.deepEqual(rt.seen.filter((request) => request.operation === 'screen.probe').at(-1).params.points, [[1000, 400]]);
+  } finally {
+    await rt.stop();
+  }
+});
