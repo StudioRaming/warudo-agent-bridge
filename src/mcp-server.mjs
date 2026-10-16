@@ -5,6 +5,7 @@ import { captureOptionsUsed, validateCaptureArgs, CAPTURE_KEYS } from './capture
 import { ImageStore } from './image-space.mjs';
 import { legendFrom, listParamsFor, resolveMark } from './ui-marks.mjs';
 import { buildClickPlan, buildPointerPlan, clickPoint, resolveUiTarget } from './pointer-timeline.mjs';
+import { validateRenderArgs } from './render-args.mjs';
 import { TOOLS, TOOL_BY_NAME } from './tools.mjs';
 import { VERSION } from './version.mjs';
 
@@ -22,11 +23,13 @@ export const INSTRUCTIONS = [
   'Writes need a short lease; this server takes it automatically when no other agent holds it. Release it with warudo_lease_release when you are done.',
   'Live changes are not saved into the scene file until warudo_scene_save_as. Mutating tools return before/after values so you can restore them.',
   'An UNKNOWN error means the request may have run: read the state back instead of retrying. NOT_EXECUTED means it never ran and is safe to retry.',
+  'To photograph a character use warudo_character_shot: it orbits around the character and never uses the free camera. A Character asset in the asset list means there is a character; if it is not visible the tool says why.',
+  'To see which texture, slot or alpha cut a renderer uses, or where its parts are, use warudo_render_pass (flat diagnostic passes); to judge the real color of a part, use warudo_render_isolate.',
   'To pose a character from a reference image: warudo_character_pose_get, then warudo_character_pose_set with muscles, capture with warudo_camera_capture, compare, adjust; save with warudo_character_pose_save.',
 ].join(' ');
 
 const textContent = (value) => ({ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) });
-const CAPTURE_TOOLS = new Set(['warudo_camera_capture', 'warudo_screen_capture', 'warudo_analysis_capture', 'warudo_ui_capture', 'warudo_screen_diff', 'warudo_screen_sequence']);
+const CAPTURE_TOOLS = new Set(['warudo_camera_capture', 'warudo_screen_capture', 'warudo_analysis_capture', 'warudo_ui_capture', 'warudo_screen_diff', 'warudo_screen_sequence', 'warudo_character_shot', 'warudo_render_pass', 'warudo_render_isolate']);
 const isCapture = (name) => CAPTURE_TOOLS.has(name);
 // Capture tools return the PNG path at the top; a pointer gesture with capture=true returns it under "capture".
 const evidencePath = (name, data) => (isCapture(name) ? data && data.path : data && data.capture && data.capture.path);
@@ -157,6 +160,7 @@ export function createServer({ home, owner = defaultOwner('mcp'), timeoutMs, aut
       // space="image" first: x/y, path, points and region become window pixels, then the argument checks run on those.
       let callArgs = tool.inputSchema.properties.space?.enum?.includes('image') ? images.convert(args).args : args;
       if (tool.check) callArgs = validateCaptureArgs(tool.check, callArgs, { evidencePath: (candidate) => evidencePngPath(home, candidate) });
+      validateRenderArgs(name, callArgs);
       if (tool.requires) await requireFeature(tool.requires);
       if (tool.requiresCapture && captureOptionsUsed(callArgs)) await requireFeature('capture-tools');
       if (tool.local === 'waitLoaded') data = await waitLoaded(callArgs);

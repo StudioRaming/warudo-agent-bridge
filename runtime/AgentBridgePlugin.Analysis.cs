@@ -159,16 +159,23 @@ namespace StudioRaming.WarudoAgentBridge
             };
         }
 
-        // Reads the live skinned meshes and humanoid bones on the main thread.
-        static AnalysisScene GatherAnalysisScene(GameObjectAsset target, Animator animator, string[] include, string[] exclude, List<string> used, List<string> skipped)
+        // The asset's root position and horizontal facing, which the named views are relative to.
+        static void FrameScene(AnalysisScene scene, GameObjectAsset target, Animator animator)
         {
-            var scene = new AnalysisScene();
             Transform rootTransform = target.GameObject.transform;
             scene.Root = animator != null ? animator.transform.position : rootTransform.position;
             Vector3 facing = animator != null ? animator.transform.forward : rootTransform.forward;
             facing.y = 0;
             scene.Forward = facing.sqrMagnitude > 1e-6f ? facing.normalized : Vector3.forward;
             scene.Right = Vector3.Cross(Vector3.up, scene.Forward);
+        }
+
+        // Reads the live skinned meshes and humanoid bones on the main thread.
+        static AnalysisScene GatherAnalysisScene(GameObjectAsset target, Animator animator, string[] include, string[] exclude, List<string> used, List<string> skipped)
+        {
+            var scene = new AnalysisScene();
+            Transform rootTransform = target.GameObject.transform;
+            FrameScene(scene, target, animator);
 
             // Body part of every transform: its nearest humanoid ancestor (hair follows the head,
             // a skirt the hips). Non-humanoid assets are drawn in one torso color.
@@ -540,16 +547,12 @@ namespace StudioRaming.WarudoAgentBridge
 
         // ---- CPU drawing (thread-pool safe: plain math on copied data) --------------------------
 
-        static void DrawAnalysisView(Color32[] image, int width, int height, AnalysisView view, AnalysisScene scene, string mode, bool drawBones, bool drawFloor)
+        // Where a view puts a world point in its panel: x, y in image pixels and the depth along the view direction.
+        // Perspective views are letterboxed to the camera aspect (the bars are painted into image when it is given, and the
+        // drawable rectangle is stored in view.Clip*); orthographic views fit the given points with a margin.
+        static Func<Vector3, Vector3?> ProjectView(AnalysisView view, int width, Color32[] image, IEnumerable<Vector3> fit)
         {
             int size = view.Size;
-            int count = scene.Vertices.Count;
-            var sx = new float[count];
-            var sy = new float[count];
-            var sz = new float[count];
-            var ok = new bool[count];
-
-            Func<Vector3, Vector3?> project;
             if (view.Perspective)
             {
                 float viewWidth = size, viewHeight = size / Mathf.Max(0.1f, view.Aspect);
@@ -560,13 +563,16 @@ namespace StudioRaming.WarudoAgentBridge
                 view.ClipX1 = Mathf.RoundToInt(offX + viewWidth);
                 view.ClipY1 = Mathf.RoundToInt(offY + viewHeight);
                 // Bars outside the camera frame are darker, so the frame edge reads as the frame.
-                var bar = new Color32(22, 22, 26, 255);
-                for (int y = view.Y0; y < view.Y0 + size; y++)
-                    for (int x = view.X0; x < view.X0 + size; x++)
-                        if (x < view.ClipX0 || y < view.ClipY0 || x >= view.ClipX1 || y >= view.ClipY1) image[y * width + x] = bar;
+                if (image != null)
+                {
+                    var bar = new Color32(22, 22, 26, 255);
+                    for (int y = view.Y0; y < view.Y0 + size; y++)
+                        for (int x = view.X0; x < view.X0 + size; x++)
+                            if (x < view.ClipX0 || y < view.ClipY0 || x >= view.ClipX1 || y >= view.ClipY1) image[y * width + x] = bar;
+                }
                 Matrix4x4 vp = view.ViewProjection, v = view.ViewMatrix;
                 float near = view.Near;
-                project = point =>
+                return point =>
                 {
                     float depth = -v.MultiplyPoint3x4(point).z;
                     if (depth <= near) return null;
@@ -578,7 +584,7 @@ namespace StudioRaming.WarudoAgentBridge
             else
             {
                 // Fit everything (mesh, joints, floor under the feet) with a margin.
-                var points = scene.Vertices.Concat(scene.Joints).Concat(new[] { scene.Root }).ToList();
+                var points = fit.ToList();
                 float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
                 foreach (Vector3 point in points)
                 {
@@ -591,8 +597,20 @@ namespace StudioRaming.WarudoAgentBridge
                 float midX = (minX + maxX) / 2f, midY = (minY + maxY) / 2f;
                 Vector3 right = view.Right, up = view.Up, forward = view.Forward;
                 float cx = view.X0 + size / 2f, cy = view.Y0 + size / 2f;
-                project = point => new Vector3(cx + (Vector3.Dot(point, right) - midX) * scale, cy - (Vector3.Dot(point, up) - midY) * scale, Vector3.Dot(point, forward));
+                return point => new Vector3(cx + (Vector3.Dot(point, right) - midX) * scale, cy - (Vector3.Dot(point, up) - midY) * scale, Vector3.Dot(point, forward));
             }
+        }
+
+        static void DrawAnalysisView(Color32[] image, int width, int height, AnalysisView view, AnalysisScene scene, string mode, bool drawBones, bool drawFloor)
+        {
+            int size = view.Size;
+            int count = scene.Vertices.Count;
+            var sx = new float[count];
+            var sy = new float[count];
+            var sz = new float[count];
+            var ok = new bool[count];
+
+            Func<Vector3, Vector3?> project = ProjectView(view, width, image, scene.Vertices.Concat(scene.Joints).Concat(new[] { scene.Root }));
             for (int i = 0; i < count; i++)
             {
                 Vector3? s = project(scene.Vertices[i]);
@@ -674,7 +692,7 @@ namespace StudioRaming.WarudoAgentBridge
                     DrawWorldLine(image, width, null, view, project, scene.HeadPosition, scene.HeadPosition + scene.Face.Value * 0.22f, new Color32(255, 60, 220, 255), 4, 0);
             }
 
-            DrawText(image, width, view.X0 + 10, view.Y0 + 10, view.Name.ToUpperInvariant() + (view.Perspective ? "" : "  ORTHO"), 3, new Color32(235, 235, 240, 255));
+            RenderRaster.DrawText(image, width, view.X0 + 10, view.Y0 + 10, view.Name.ToUpperInvariant() + (view.Perspective ? "" : "  ORTHO"), 3, new Color32(235, 235, 240, 255));
             var border = new Color32(70, 72, 80, 255);
             for (int i = 0; i < size; i++)
             {
@@ -756,58 +774,6 @@ namespace StudioRaming.WarudoAgentBridge
             Vector3? pa = project(a), pb = project(b);
             if (pa == null || pb == null) return;
             DrawLine(image, width, depth, view, pa.Value.x, pa.Value.y, pa.Value.z, pb.Value.x, pb.Value.y, pb.Value.z, color, thickness, epsilon);
-        }
-
-        // 5x7 bitmap font for view labels (upper case, digits, a few symbols).
-        static readonly Dictionary<char, byte[]> Glyphs = new Dictionary<char, byte[]>
-        {
-            { 'A', new byte[] { 0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 } }, { 'B', new byte[] { 0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E } },
-            { 'C', new byte[] { 0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E } }, { 'D', new byte[] { 0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E } },
-            { 'E', new byte[] { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F } }, { 'F', new byte[] { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10 } },
-            { 'G', new byte[] { 0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F } }, { 'H', new byte[] { 0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 } },
-            { 'I', new byte[] { 0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E } }, { 'J', new byte[] { 0x07, 0x02, 0x02, 0x02, 0x02, 0x12, 0x0C } },
-            { 'K', new byte[] { 0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11 } }, { 'L', new byte[] { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F } },
-            { 'M', new byte[] { 0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11 } }, { 'N', new byte[] { 0x11, 0x11, 0x19, 0x15, 0x13, 0x11, 0x11 } },
-            { 'O', new byte[] { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E } }, { 'P', new byte[] { 0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10 } },
-            { 'Q', new byte[] { 0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D } }, { 'R', new byte[] { 0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11 } },
-            { 'S', new byte[] { 0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E } }, { 'T', new byte[] { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 } },
-            { 'U', new byte[] { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E } }, { 'V', new byte[] { 0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04 } },
-            { 'W', new byte[] { 0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A } }, { 'X', new byte[] { 0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11 } },
-            { 'Y', new byte[] { 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04 } }, { 'Z', new byte[] { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F } },
-            { '0', new byte[] { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E } }, { '1', new byte[] { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E } },
-            { '2', new byte[] { 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F } }, { '3', new byte[] { 0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E } },
-            { '4', new byte[] { 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 } }, { '5', new byte[] { 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E } },
-            { '6', new byte[] { 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E } }, { '7', new byte[] { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 } },
-            { '8', new byte[] { 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E } }, { '9', new byte[] { 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C } },
-            { '-', new byte[] { 0, 0, 0, 0x1F, 0, 0, 0 } }, { '.', new byte[] { 0, 0, 0, 0, 0, 0x0C, 0x0C } },
-            { ':', new byte[] { 0, 0x0C, 0x0C, 0, 0x0C, 0x0C, 0 } }, { '/', new byte[] { 0x01, 0x01, 0x02, 0x04, 0x08, 0x10, 0x10 } },
-        };
-
-        static void DrawText(Color32[] image, int width, int x, int y, string text, int scale, Color32 color)
-        {
-            var shadow = new Color32(0, 0, 0, 255);
-            int height = image.Length / width;
-            foreach (int pass in new[] { 1, 0 })
-            {
-                int cursor = x + pass;
-                foreach (char ch in text)
-                {
-                    byte[] rows;
-                    if (Glyphs.TryGetValue(char.ToUpperInvariant(ch), out rows))
-                        for (int row = 0; row < 7; row++)
-                            for (int col = 0; col < 5; col++)
-                            {
-                                if ((rows[row] & (0x10 >> col)) == 0) continue;
-                                for (int sy = 0; sy < scale; sy++)
-                                    for (int sx = 0; sx < scale; sx++)
-                                    {
-                                        int px = cursor + col * scale + sx, py = y + pass + row * scale + sy;
-                                        if (px >= 0 && py >= 0 && px < width && py < height) image[py * width + px] = pass == 1 ? shadow : color;
-                                    }
-                            }
-                    cursor += 6 * scale;
-                }
-            }
         }
     }
 }

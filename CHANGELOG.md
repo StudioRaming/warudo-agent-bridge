@@ -10,6 +10,16 @@
 - The runtime reports the `capture-tools` feature; capture options sent to an older runtime answer `RUNTIME_OUTDATED` instead of being ignored. `npm run check:pixels` checks the pixel math under plain .NET.
 - Default `maxSize` 1600 also applies to `warudo_screen_capture` without options: a 2560x1440 window now comes back at 1600x900 (pass `maxSize: 4096` for full resolution).
 
+### Character photos
+- `warudo_character_shot`: a picture of a Character asset from an orbit around it (yaw relative to the character's facing, named views, framings full, upper, bust and face, up to 6 views in one sheet, background scene, flat or transparent). A temporary camera copies the main camera's rendering and is placed on the orbit, so the user's camera never moves and the character is not lost to a free camera. Each view reports the character's screen bounds, coverage and occlusion (with the names of what hides it), and retries once when the character covers under 10 % or is more than half hidden.
+- A Character asset in the scene is never reported as missing: `CHARACTER_NOT_LOADED`, `CHARACTER_DISABLED` and `CHARACTER_NO_RENDERERS` say why it cannot be shot; `NO_CHARACTER_ASSET` lists the asset types present.
+- The MCP instructions and the `warudo_camera_capture` and `warudo_screen_capture` descriptions point agents to it. The runtime reports the `character-shot` feature.
+
+### Render passes
+- `warudo_render_pass`: flat diagnostic passes of a character (or any asset) in one labeled image: parts (numbered slots with a legend of renderer, slot, material, shader, cutout mode and camera-frame bounds), albedo, texture (any shader property), alpha (cut areas in red), normals, depth, uv (with seams), lighting and overlap. Drawn by a CPU rasterizer from the live renderers, so nothing in WARUDO changes. Textures come from the renderer's MaterialPropertyBlock first, so a plugin recolor shows; the legend says which texture, from where, and its size, tiling and offset.
+- `warudo_render_isolate`: the real look (real shaders, lights, post-processing) of chosen renderers, alone or highlighted in the frame, with each part's screen bounds, visible share and mean color. A temporary camera copies the main camera; the chosen renderers are moved to an unused layer for a few synchronous renders and restored in the same call.
+- Both are lease-free reads, return the PNG like the other captures, are checked for bad options before they are queued, and need the `render-passes` runtime feature.
+
 ### Virtual pointer (Tools: 78)
 - Agents can click, double click, drag, hover and scroll in WARUDO's main window without bringing it to the front and without any OS input: `warudo_pointer_click`, `warudo_pointer_drag`, `warudo_pointer_move`, `warudo_pointer_button`, `warudo_pointer_wheel`, `warudo_pointer_release`, `warudo_pointer_state`, `warudo_key_virtual`.
 - `warudo_ui_list` (what reacts to the pointer, with window-pixel rectangles), `warudo_ui_at` (what is under a point), `warudo_ui_click` (by id or label; a covered control fails with `COVERED` instead of clicking what is on top) and `warudo_ui_set_text` (InputField and TMP_InputField).
