@@ -338,9 +338,35 @@ namespace StudioRaming.WarudoAgentBridge
             }
             if (t == null && s.Asset != null)
             {
-                try { t = s.Asset.GetBoneTransform(id, CharacterBoneLayer.Raw); } catch (Exception) { }
+                try { t = AssetBone(s.Asset, id); } catch (Exception) { }
             }
             return t;
+        }
+
+        // WARUDO's own bone lookup, CharacterAsset.GetBoneTransform(HumanBodyBones, CharacterBoneLayer.Raw), exists from 0.15 only. It is found by reflection
+        // so the runtime also compiles on the 0.14 stable branch (a direct call there failed the whole Playground compile); on 0.14 only the Animator path answers.
+        static System.Reflection.MethodInfo s_assetBoneLookup;
+        static object s_assetBoneRawLayer;
+        static bool s_assetBoneLookupSearched;
+
+        static Transform AssetBone(object asset, HumanBodyBones id)
+        {
+            if (!s_assetBoneLookupSearched)
+            {
+                s_assetBoneLookupSearched = true;
+                foreach (System.Reflection.MethodInfo m in asset.GetType().GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+                {
+                    if (m.Name != "GetBoneTransform" || !typeof(Transform).IsAssignableFrom(m.ReturnType)) continue;
+                    System.Reflection.ParameterInfo[] ps = m.GetParameters();
+                    if (ps.Length != 2 || ps[0].ParameterType != typeof(HumanBodyBones) || !ps[1].ParameterType.IsEnum
+                        || !Enum.IsDefined(ps[1].ParameterType, "Raw")) continue;
+                    s_assetBoneRawLayer = Enum.Parse(ps[1].ParameterType, "Raw");
+                    s_assetBoneLookup = m;
+                    break;
+                }
+            }
+            if (s_assetBoneLookup == null) return null;
+            return s_assetBoneLookup.Invoke(asset, new object[] { id, s_assetBoneRawLayer }) as Transform;
         }
 
         // The box that must fit the frame, from the humanoid bones whenever the avatar has them (Hips, Chest, shoulders, Head, feet),
